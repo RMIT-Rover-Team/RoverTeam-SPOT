@@ -1,8 +1,8 @@
 {
     "name": "telemetry",
     "priority": 0,
-    "args": [
-        "--webrtc_host", "0.0.0.0",
-        "--webrtc_port", "3002"
-    ]
+    "args": {
+        "--webrtc_host": "0.0.0.0",
+        "--webrtc_port": "3002"
+    }
 }  

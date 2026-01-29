@@ -17,7 +17,7 @@ SUBSYSTEMS_DIR = Path(__file__).parent / "subprocesses"
 HEARTBEAT_INTERVAL = 5.0
 HEARTBEAT_TIMEOUT = 10.0
 RESTART_DELAY = 2.0
-SHOW_DEBUG = False
+SHOW_DEBUG = False # WARNING!! If you enable this, weird stuff happens because we debug the telemetry which becomes a loop
 
 PORT_INTERPROCESS   = 5555
 PORT_TELEMETRY      = 3002
@@ -73,6 +73,21 @@ class Supervisor:
         self.zmq_ctx = zmq.asyncio.Context()
         self.main_pub = self.zmq_ctx.socket(zmq.PUB)
         self.main_pub.bind(f"tcp://127.0.0.1:{PORT_INTERPROCESS}")
+
+        # Startup message
+        log.info("\nStarting...")
+
+        log.warning("\n   _______  ____  ______")
+        log.warning("  / __/ _ \\/ __ \\/_  __/")
+        log.warning(" _\\ \\/ ___/ /_/ / / /")
+        log.warning("/___/_/   \\____/ /_/")  
+        log.warning("SOFTWARE PLATFORM for\nONBOARD TELEMETRY\n")
+
+        log.info("Designed for the:\n")
+
+        log.warning("⣏⡉ ⡎⢱ ⡇⢸ ⡇ ⡷⣸ ⡎⢱ ⢇⡸")
+        log.warning("⠧⠤ ⠣⠪ ⠣⠜ ⠇ ⠇⠹ ⠣⠜ ⠇⠸")
+        log.warning("SOFTWARE STACK\n\n")
 
         self.load_subsystems()
 
@@ -167,7 +182,7 @@ class Supervisor:
 
         # Append any extra args from config
         if sub.extra_args:
-            cmd.extend(sub.extra_args)
+            cmd.extend(flatten_args(sub.extra_args))
 
         try:
             sub.process = await asyncio.create_subprocess_exec(
@@ -228,6 +243,9 @@ class Supervisor:
             }.get(level, "\033[0m")
             print(f"{color}[{sub.name}]: {msg}\033[0m")
 
+            # Log through telemetry
+            self.main_pub.send_string(f"TELEMETRY {level} [{sub.name}]: {msg}")
+
     async def monitor_subsystems(self):
         while not self._stopping:
             now = self.loop.time()
@@ -277,6 +295,35 @@ class Supervisor:
         self._stopping = True
         await asyncio.gather(*(self.kill_subsystem(sub) for sub in self.subsystems.values()))
         log.info("[supervisor]: All subsystems have been terminated")
+
+# -------------------------
+# Arg helper function
+# -------------------------
+def flatten_args(args: dict[str, object]) -> list[str]:
+    result: list[str] = []
+
+    for key, value in args.items():
+        if value is None:
+            continue
+
+        # Boolean flag
+        if isinstance(value, bool):
+            if value:
+                result.append(key)
+            continue
+
+        # List → repeat flag
+        if isinstance(value, list):
+            for item in value:
+                result.append(key)
+                result.append(str(item))
+            continue
+
+        # Everything else → single value
+        result.append(key)
+        result.append(str(value))
+
+    return result
 
 # -------------------------
 # MAIN

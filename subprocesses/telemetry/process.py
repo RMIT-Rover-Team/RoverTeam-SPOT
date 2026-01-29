@@ -24,13 +24,31 @@ logger.addHandler(JsonHandler())
 # -------------------------
 # ZMQ TELEMETRY
 # -------------------------
+def send_startup_message(ch):
+    ch.send("CLEARSCREEN")
+    ch.send("INFO Starting...")
+    ch.send("WARNING \n   _______  ____  ______")
+    ch.send("WARNING   / __/ _ \\/ __ \\/_  __/")
+    ch.send("WARNING  _\\ \\/ ___/ /_/ / / /")
+    ch.send("WARNING /___/_/   \\____/ /_/")  
+    ch.send("WARNING SOFTWARE PLATFORM for")
+    ch.send("WARNING ONBOARD TELEMETRY")
+    ch.send("INFO \nDesigned for the:")
+    ch.send("WARNING \n⣏⡉ ⡎⢱ ⡇⢸ ⡇ ⡷⣸ ⡎⢱ ⢇⡸")
+    ch.send("WARNING ⠧⠤ ⠣⠪ ⠣⠜ ⠇ ⠇⠹ ⠣⠜ ⠇⠸")
+    ch.send("WARNING SOFTWARE STACK\n\n")
+            
+
 async def receive_loop(sub_socket):
     """Continuously receive ZMQ messages."""
     while True:
         try:
             msg = await sub_socket.recv_string(flags=zmq.NOBLOCK)
+
             if msg.startswith("TELEMETRY "):
-                logging.info(f"ZMQ: {msg[len('TELEMETRY '):]}")
+                for ch in list(channels):
+                    if ch.readyState == "open":
+                        ch.send(msg[len("TELEMETRY "):])
         except zmq.Again:
             await asyncio.sleep(0.01)  # prevent CPU spin
 
@@ -40,9 +58,33 @@ async def heartbeat_loop(interval: float):
         await asyncio.sleep(interval)
 
 # -------------------------
+# CORS
+# -------------------------
+@web.middleware
+async def cors_middleware(request, handler):
+    if request.method == "OPTIONS":
+        return web.Response(
+            status=200,
+            headers={
+                "Access-Control-Allow-Origin": "*",
+                "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+                "Access-Control-Allow-Headers": request.headers.get(
+                    "Access-Control-Request-Headers", "*"
+                ),
+            },
+        )
+
+    response = await handler(request)
+    response.headers["Access-Control-Allow-Origin"] = "*"
+    response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
+    response.headers["Access-Control-Allow-Headers"] = "*"
+    return response
+
+# -------------------------
 # WEBRTC LOGGING SERVER
 # -------------------------
-pcs = set()
+pcs: set[RTCPeerConnection] = set()
+channels: set[RTCDataChannel] = set()
 
 async def handle_offer(request):
     params = await request.json()
@@ -53,22 +95,18 @@ async def handle_offer(request):
 
     @pc.on("datachannel")
     def on_datachannel(channel: RTCDataChannel):
-        logging.info(f"Incoming WebRTC channel: {channel.label}")
+        logging.info(f"Incoming WebRTC channel")
+        channels.add(channel)
+
+        send_startup_message(channel)
+
+        @channel.on("close")
+        def on_close():
+            channels.discard(channel)
 
         @channel.on("message")
         def on_message(message):
-            try:
-                # Attempt to parse JSON; fallback to raw string
-                if isinstance(message, str):
-                    try:
-                        data = json.loads(message)
-                        logging.info(f"WebRTC {channel.label} JSON: {data}")
-                    except json.JSONDecodeError:
-                        logging.info(f"WebRTC {channel.label}: {message}")
-                else:
-                    logging.info(f"WebRTC {channel.label} (binary) {len(message)} bytes")
-            except Exception as e:
-                logging.error(f"Error handling WebRTC message: {e}")
+            logging.info(f"Received from peer: {message}")
 
     await pc.setRemoteDescription(offer)
     answer = await pc.createAnswer()
@@ -80,7 +118,7 @@ async def handle_offer(request):
     })
 
 async def start_webrtc_server(host="0.0.0.0", port=3002):
-    app = web.Application()
+    app = web.Application(middlewares=[cors_middleware])
     app.router.add_post("/offer", handle_offer)
 
     runner = web.AppRunner(app)
@@ -108,6 +146,9 @@ async def main(heartbeat_interval: float, sub_url: str, webrtc_host: str, webrtc
         await asyncio.gather(receive_task, heartbeat_task, webrtc_task)
     except asyncio.CancelledError:
         logging.info("Shutdown received, cancelling tasks")
+        for ch in list(channels):
+            if ch.readyState == "open":
+                ch.send("ERROR [supervisor]: Received shutdown signal")
     finally:
         receive_task.cancel()
         heartbeat_task.cancel()

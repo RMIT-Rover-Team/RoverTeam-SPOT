@@ -1,8 +1,16 @@
 {
     "name": "cameras",
     "priority": 10,
-    "args": [
-        "--webrtc_host", "0.0.0.0",
-        "--webrtc_port", "3001"
-    ]
+    "args": {
+        "--webrtc_host": "0.0.0.0",
+        "--webrtc_port": "3001",
+        "--ignore_cameras": [
+            // My computer has some odd stuff installed, dont worry:
+            "Game Capture HD60 Pro",
+            "Meta Quest 3",
+            "Meta Quest 3S",
+            "Meta Quest 2",
+            "Meta Quest Pro"
+        ]
+    }
 }  

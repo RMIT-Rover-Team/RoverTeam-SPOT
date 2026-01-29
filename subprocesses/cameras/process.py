@@ -68,6 +68,7 @@ async def heartbeat_loop(interval: float):
 # -------------------------
 # CAMERA DISCOVERY (WINDOWS)
 # -------------------------
+ignore_list = []
 def list_windows_cameras():
     cmd = [
         "ffmpeg",
@@ -97,7 +98,7 @@ def list_windows_cameras():
 
         match = re.search(r'"(.+)"', line)
         if match:
-            if "Meta" in line:
+            if match.group(1) in ignore_list:
                 i+=1
                 continue
 
@@ -111,7 +112,7 @@ def list_windows_cameras():
 # OPENCV TRACK
 # -------------------------
 class OpenCVCameraTrack(VideoStreamTrack):
-    def __init__(self, index: int, width=640, height=480):
+    def __init__(self, index: int, label: str, width=640, height=480):
         super().__init__()
         self.index = index
         self.cap = cv2.VideoCapture(index, cv2.CAP_DSHOW)
@@ -124,14 +125,14 @@ class OpenCVCameraTrack(VideoStreamTrack):
         )
 
         if not self.cap.isOpened():
-            raise RuntimeError(f"Failed to open camera index {index}")
+            raise Exception(f"'{label}' ({index}). Consider adding this to --ignore_cameras.")
 
     async def recv(self):
         pts, time_base = await self.next_timestamp()
 
         ret, frame = self.cap.read()
         if not ret:
-            raise RuntimeError("Camera read failed")
+            raise Exception(f"Camera read failed")
 
         video = VideoFrame.from_ndarray(frame, format="bgr24")
         video.pts = pts
@@ -171,7 +172,7 @@ async def handle_offer(request):
     pcs.add(pc)
 
     try:
-        track = OpenCVCameraTrack(camera_id)
+        track = OpenCVCameraTrack(camera_id, camera["label"])
         players[pc] = track
         pc.addTrack(track)
     except Exception as e:
@@ -301,6 +302,9 @@ if __name__ == "__main__":
     parser.add_argument("--sub_url", type=str, default="tcp://127.0.0.1:5555")
     parser.add_argument("--webrtc_host", type=str, default="0.0.0.0")
     parser.add_argument("--webrtc_port", type=int, default=3002)
+    parser.add_argument("--ignore_cameras",action="append",default=[])
     args = parser.parse_args()
+
+    ignore_list = args.ignore_cameras
 
     asyncio.run(main(args.heartbeat, args.sub_url, args.webrtc_host, args.webrtc_port))
