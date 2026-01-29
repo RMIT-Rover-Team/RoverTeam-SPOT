@@ -1,0 +1,12 @@
+{
+    // Subprocess name
+    "name": "template",
+
+    // Priority:
+    // LOWER numbers have HIGHER priority
+    // -1:      ignored (templates, temp., etc.)
+    // 0-9:     TIER 1 = critical items
+    // 10-99:   TIER 2 = standard, non-breaking items
+    // 100+:    TIER 3 = experimental, low-priority
+    "priority": -1
+}  
