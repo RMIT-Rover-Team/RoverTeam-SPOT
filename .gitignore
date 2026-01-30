@@ -1,0 +1,8 @@
+# Poetry virtual environment
+.venv/
+
+# Poetry lock file (ignore if you don't want it committed)
+poetry.lock
+
+#  python cache files
+__pycache__/
