@@ -32,7 +32,8 @@ class AnsiFormatter(logging.Formatter):
         "INFO": "\033[0m",     # default
         "WARNING": "\033[93m", # yellow
         "ERROR": "\033[31m",   # red
-        "CRITICAL": "\033[91;1m" # bright red + bold
+        "CRITICAL": "\033[91;1m", # bright red + bold
+        "SUCCESS": "\033[92m"   #green
     }
 
     def format(self, record: logging.LogRecord):
@@ -52,7 +53,8 @@ color_map = {
     "INFO": "\033[0m",
     "WARNING": "\033[93m",
     "ERROR": "\033[31m",
-    "CRITICAL": "\033[91;1m"
+    "CRITICAL": "\033[91;1m",
+    "SUCCESS": "\033[92m"
 }
 
 # -------------------------
@@ -248,6 +250,8 @@ class Supervisor:
             if msg.startswith("SYSTEM CMD"):
                 arg_v = msg.split()
                 arg_c = len(arg_v)
+                color = color_map.get("SUCCESS", "\033[0m")
+                print(f"{color} > {msg[len("SYSTEM CMD"):]}\033[0m")
                 await self.handle_command(arg_c, arg_v)
                 continue
 

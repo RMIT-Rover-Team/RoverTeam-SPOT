@@ -7,13 +7,15 @@ import subprocess
 import re
 import signal
 
+from scan_cameras.core import scan
+from stream_cameras.core import stream_camera, cleanup_camera
+
 import zmq
 import zmq.asyncio
 
 from aiohttp import web
 from aiortc import RTCPeerConnection, RTCSessionDescription, VideoStreamTrack
 from av import VideoFrame
-import cv2
 
 
 # -------------------------
@@ -42,7 +44,7 @@ ZMQ_RECEIVE = False # No need to receive ZMQ commands in this process
 
 pcs = set()
 players = {}
-
+ignore_list = []
 
 # -------------------------
 # ZMQ RECEIVE LOOP
@@ -64,92 +66,11 @@ async def heartbeat_loop(interval: float):
         print("HEARTBEAT", flush=True)
         await asyncio.sleep(interval)
 
-
-# -------------------------
-# CAMERA DISCOVERY (WINDOWS)
-# -------------------------
-ignore_list = []
-def list_windows_cameras():
-    cmd = [
-        "ffmpeg",
-        "-hide_banner",
-        "-list_devices", "true",
-        "-f", "dshow",
-        "-i", "dummy",
-    ]
-
-    try:
-        proc = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-    except FileNotFoundError:
-        logger.error("FFmpeg not found in PATH")
-        return []
-
-    cameras = []
-    i = 0
-    for line in proc.stderr.splitlines():
-
-        if not "(video)" in line:
-            continue
-
-        match = re.search(r'"(.+)"', line)
-        if match:
-            if match.group(1) in ignore_list:
-                i+=1
-                continue
-
-            cameras.append({"id":i,"label":match.group(1)})
-            i+=1
-
-    return cameras
-
-
-# -------------------------
-# OPENCV TRACK
-# -------------------------
-class OpenCVCameraTrack(VideoStreamTrack):
-    def __init__(self, index: int, label: str, width=640, height=480):
-        super().__init__()
-        self.index = index
-        self.cap = cv2.VideoCapture(index, cv2.CAP_DSHOW)
-
-        self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, width)
-        self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
-        self.cap.set(
-            cv2.CAP_PROP_FOURCC,
-            cv2.VideoWriter_fourcc(*"MJPG"),
-        )
-
-        if not self.cap.isOpened():
-            raise Exception(f"'{label}' ({index}). Consider adding this to --ignore_cameras.")
-
-    async def recv(self):
-        pts, time_base = await self.next_timestamp()
-
-        ret, frame = self.cap.read()
-        if not ret:
-            raise Exception(f"Camera read failed")
-
-        video = VideoFrame.from_ndarray(frame, format="bgr24")
-        video.pts = pts
-        video.time_base = time_base
-        return video
-
-    def stop(self):
-        if self.cap:
-            self.cap.release()
-        super().stop()
-
-
 # -------------------------
 # HTTP HANDLERS
 # -------------------------
 async def handle_cameras(request):
-    cameras = list_windows_cameras()
+    cameras = scan(ignore_list, logger)
     return web.json_response({"cameras":cameras})
 
 
@@ -161,7 +82,7 @@ async def handle_offer(request):
     params = await request.json()
     camera_id = int(params.get("camera_id", 0))
 
-    cameras = list_windows_cameras()
+    cameras = scan(ignore_list, logger)
     camera = next((c for c in cameras if c["id"] == camera_id), None)
     if camera is None:
         return web.Response(status=404, text="Camera not found")
@@ -172,7 +93,7 @@ async def handle_offer(request):
     pcs.add(pc)
 
     try:
-        track = OpenCVCameraTrack(camera_id, camera["label"])
+        track = await stream_camera(camera, logger)
         players[pc] = track
         pc.addTrack(track)
     except Exception as e:
@@ -228,9 +149,9 @@ async def cleanup_pc(pc):
     track = players.pop(pc, None)
     if track:
         try:
-            track.stop()
-        except Exception:
-            pass
+            await cleanup_camera(track, logger)
+        except Exception as e:
+            logger.warning(f"Failed to cleanup camera track: {e}")
 
     await pc.close()
     pcs.discard(pc)
