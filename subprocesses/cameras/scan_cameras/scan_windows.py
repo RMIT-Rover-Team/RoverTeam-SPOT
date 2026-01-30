@@ -1,4 +1,5 @@
 import subprocess
+import re
 
 def scan_windows(ignore_list, logger):
     cmd = [
