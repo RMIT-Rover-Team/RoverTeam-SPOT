@@ -5,7 +5,7 @@ import logging
 import platform
 import subprocess
 import re
-import time
+import signal
 
 import zmq
 import zmq.asyncio
@@ -244,12 +244,7 @@ async def on_shutdown(app):
 # WEBRTC SERVER TASK
 # -------------------------
 async def webrtc_server_task(host: str, port: int):
-    if not IS_WINDOWS:
-        raise RuntimeError("This process is Windows-only")
-
-    app = web.Application(
-        middlewares=[cors_middleware]
-    )
+    app = web.Application(middlewares=[cors_middleware])
     app.router.add_get("/cameras", handle_cameras)
     app.router.add_post("/offer", handle_offer)
     app.router.add_get("/ping", handle_ping)
@@ -261,11 +256,15 @@ async def webrtc_server_task(host: str, port: int):
     site = web.TCPSite(runner, host, port)
     await site.start()
 
-    logging.getLogger("aiohttp.access").setLevel(logging.WARNING)
     logger.warning(f"WebRTC camera server listening on {host}:{port}")
 
-    while True:
-        await asyncio.sleep(3600)
+    try:
+        while True:
+            await asyncio.sleep(3600)
+    except asyncio.CancelledError:
+        logger.info("webrtc_server_task cancelled")
+        await runner.cleanup()
+        raise
 
 
 # -------------------------
@@ -277,25 +276,64 @@ async def main(heartbeat_interval: float, sub_url: str, host: str, port: int):
     sub_socket.connect(sub_url)
     sub_socket.setsockopt_string(zmq.SUBSCRIBE, "")
 
+    # WebRTC server
+    app = web.Application(middlewares=[cors_middleware])
+    app.router.add_get("/cameras", handle_cameras)
+    app.router.add_post("/offer", handle_offer)
+    app.router.add_get("/ping", handle_ping)
+    app.on_shutdown.append(on_shutdown)
+
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, host, port)
+    await site.start()
+
+    logging.getLogger("aiohttp.access").setLevel(logging.WARNING)
+    logger.warning(f"WebRTC camera server listening on {host}:{port}")
+
+    # Tasks
     tasks = [
         asyncio.create_task(receive_loop(sub_socket)),
         asyncio.create_task(heartbeat_loop(heartbeat_interval)),
-        asyncio.create_task(webrtc_server_task(host, port)),
     ]
 
-    try:
-        await asyncio.gather(*tasks)
-    except asyncio.CancelledError:
-        logger.info("Shutdown received, cancelling tasks")
-    finally:
-        for t in tasks:
-            t.cancel()
-        await asyncio.sleep(0)
+    # Shutdown event
+    stop_event = asyncio.Event()
+
+    def handle_stop(*args):
+        stop_event.set()
+
+    loop = asyncio.get_event_loop()
+    if platform.system() == "Windows":
+        signal.signal(signal.SIGINT, handle_stop)
+        signal.signal(signal.SIGTERM, handle_stop)
+    else:
+        loop.add_signal_handler(signal.SIGINT, handle_stop)
+        loop.add_signal_handler(signal.SIGTERM, handle_stop)
+
+    # Wait for shutdown signal
+    await stop_event.wait()
+
+    # Cancel tasks
+    for t in tasks:
+        t.cancel()
+    await asyncio.sleep(0)
+
+    # Cleanup WebRTC server properly
+    await site.stop()
+    await runner.cleanup()
+    logger.warning("WebRTC camera server shutdown complete")
 
 
 # -------------------------
 # ENTRYPOINT
 # -------------------------
+def handle_shutdown():
+    for pc in list(pcs):
+        asyncio.get_event_loop().create_task(cleanup_pc(pc))
+    for task in asyncio.all_tasks():
+        task.cancel()
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--heartbeat", type=float, default=5.0)
@@ -304,7 +342,23 @@ if __name__ == "__main__":
     parser.add_argument("--webrtc_port", type=int, default=3002)
     parser.add_argument("--ignore_cameras",action="append",default=[])
     args = parser.parse_args()
-
     ignore_list = args.ignore_cameras
 
-    asyncio.run(main(args.heartbeat, args.sub_url, args.webrtc_host, args.webrtc_port))
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+
+    # Cross-platform termination signals
+    if platform.system() == "Windows":
+        signal.signal(signal.SIGINT, lambda *_: handle_shutdown())
+        signal.signal(signal.SIGTERM, lambda *_: handle_shutdown())
+    else:
+        loop.add_signal_handler(signal.SIGINT, handle_shutdown)
+        loop.add_signal_handler(signal.SIGTERM, handle_shutdown)
+
+    try:
+        loop.run_until_complete(main(args.heartbeat, args.sub_url, args.webrtc_host, args.webrtc_port))
+    except asyncio.CancelledError:
+        logger.info("Cancelled")
+    finally:
+        loop.run_until_complete(on_shutdown(None))
+        loop.close()

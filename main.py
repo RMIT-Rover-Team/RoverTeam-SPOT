@@ -47,6 +47,14 @@ handler.setFormatter(AnsiFormatter())
 log.addHandler(handler)
 log.setLevel(SHOW_DEBUG and logging.DEBUG or logging.INFO)
 
+color_map = {
+    "DEBUG": "\033[90m",
+    "INFO": "\033[0m",
+    "WARNING": "\033[93m",
+    "ERROR": "\033[31m",
+    "CRITICAL": "\033[91;1m"
+}
+
 # -------------------------
 # DATA STRUCTURES
 # -------------------------
@@ -59,6 +67,7 @@ class Subsystem:
     process: Optional[asyncio.subprocess.Process] = None
     last_heartbeat: float = field(default_factory=lambda: 0.0)
     restart_pending: bool = False
+    intentionally_stopped: bool = False
 
 # -------------------------
 # SUPERVISOR
@@ -172,6 +181,8 @@ class Supervisor:
             log.error(f"[supervisor]: process.py file for {sub.name} does not exist.")
             sub.process = None
             return
+        
+        sub.intentionally_stopped = False
 
         log.info(f"[supervisor]: Launching {sub.name} ({sub.priority_rank})")
         cmd = [
@@ -233,14 +244,15 @@ class Supervisor:
             if level == "DEBUG" and not SHOW_DEBUG:
                 continue
 
+            # Command
+            if msg.startswith("SYSTEM CMD"):
+                arg_v = msg.split()
+                arg_c = len(arg_v)
+                await self.handle_command(arg_c, arg_v)
+                continue
+
             # Print nicely
-            color = {
-                "DEBUG": "\033[90m",
-                "INFO": "\033[0m",
-                "WARNING": "\033[93m",
-                "ERROR": "\033[31m",
-                "CRITICAL": "\033[91;1m"
-            }.get(level, "\033[0m")
+            color = color_map.get(level, "\033[0m")
             print(f"{color}[{sub.name}]: {msg}\033[0m")
 
             # Log through telemetry
@@ -250,7 +262,12 @@ class Supervisor:
         while not self._stopping:
             now = self.loop.time()
             for sub in sorted(self.subsystems.values(), key=lambda s: s.priority_rank):
-                # Restart if process is gone
+
+                # Ignore intentionally stopped subsystems
+                if sub.intentionally_stopped:
+                    continue
+
+                # Restart if process is gone unexpectedly
                 if sub.process is None and not sub.restart_pending:
                     sub.restart_pending = True
                     asyncio.create_task(self.restart_subsystem(sub))
@@ -279,14 +296,66 @@ class Supervisor:
     async def kill_subsystem(self, sub: Subsystem):
         if sub.process and sub.process.returncode is None:
             log.info(f"[supervisor]: Terminating {sub.name}...")
+
+            # Terminate process gracefully
             sub.process.terminate()
+
             try:
+                # Wait up to 5 seconds for exit
                 await asyncio.wait_for(sub.process.wait(), timeout=5)
             except asyncio.TimeoutError:
                 log.warning(f"[supervisor]: {sub.name} did not exit, killing...")
                 sub.process.kill()
                 await sub.process.wait()
+
+            # Ensure stdout/stderr tasks are drained
+            await asyncio.sleep(0.1)
+
         sub.process = None
+
+
+    async def force_restart_subsystem(self, sub: Subsystem):
+        """
+        Stop, clean up, and launch a subsystem again.
+        Waits for proper shutdown before launching.
+        """
+        log.info(f"[supervisor]: Force restarting {sub.name}...")
+
+        # Stop first
+        await self.stop_subsystem(sub)
+
+        # Small delay to ensure OS releases port (Windows)
+        await asyncio.sleep(0.1)
+
+        # Launch again
+        await self.launch(sub)
+
+        log.info(f"[supervisor]: {sub.name} restarted successfully")
+
+
+    async def stop_subsystem(self, sub: Subsystem):
+        """
+        Stop a specific subsystem and ensure heartbeat monitoring is stopped.
+        Fully waits for process cleanup so TCP ports are freed.
+        """
+        if sub.process is None:
+            log.info(f"[supervisor]: {sub.name} is already stopped")
+            return
+
+        log.info(f"[supervisor]: Stopping {sub.name}...")
+
+        # Prevent auto-restart while stopping
+        sub.restart_pending = False
+        sub.intentionally_stopped = True
+
+        # Kill the process
+        await self.kill_subsystem(sub)
+
+        # Reset last heartbeat
+        sub.last_heartbeat = 0.0
+
+        log.info(f"[supervisor]: {sub.name} has been stopped successfully")
+
 
     async def stop_all(self):
         if self._stopping:
@@ -295,6 +364,68 @@ class Supervisor:
         self._stopping = True
         await asyncio.gather(*(self.kill_subsystem(sub) for sub in self.subsystems.values()))
         log.info("[supervisor]: All subsystems have been terminated")
+
+    async def handle_command(self, arg_c: int, arg_v):
+        return_message = "Invalid command"
+        return_level = "ERROR"
+        if arg_c <= 2:
+            return_message = "No command specified"
+        
+        # restart
+        elif arg_v[2] == "restart":
+            if arg_c <= 3:
+                return_message = "No process specified"
+            elif next((sub for sub in self.subsystems.values() if sub.name == arg_v[3]), None) == None:
+                return_message = f"The process '{arg_v[3]}' cannot be found."
+            else:
+                sub = next((sub for sub in self.subsystems.values() if sub.name == arg_v[3]), None)
+                if sub == None:
+                    return_message = f"Error getting process '{arg_v[3]}'."
+                else:
+                    return_message = f"Restarted {arg_v[3]}"
+                    return_level = "WARNING"
+                    await self.force_restart_subsystem(sub)
+
+        # stop
+        elif arg_v[2] == "stop":
+            if arg_c <= 3:
+                return_message = "No process specified"
+            elif arg_v[3] == "telemetry":
+                # HARDCODE BLOCK - this would brick the comms to the rover lol
+                return_message = "BLOCKED: Stopping telemetry is irrecoverable. Use 'restart telemetry' instead."
+            elif next((sub for sub in self.subsystems.values() if sub.name == arg_v[3]), None) == None:
+                return_message = f"The process '{arg_v[3]}' cannot be found."
+            else:
+                sub = next((sub for sub in self.subsystems.values() if sub.name == arg_v[3]), None)
+                if sub == None:
+                    return_message = f"Error getting process '{arg_v[3]}'."
+                else:
+                    return_message = f"Stopped {arg_v[3]}"
+                    return_level = "WARNING"
+                    await self.stop_subsystem(sub)
+
+        # start
+        elif arg_v[2] == "start":
+            if arg_c <= 3:
+                return_message = "No process specified"
+            elif next((sub for sub in self.subsystems.values() if sub.name == arg_v[3]), None) == None:
+                return_message = f"The process '{arg_v[3]}' cannot be found."
+            else:
+                sub = next((sub for sub in self.subsystems.values() if sub.name == arg_v[3]), None)
+                if sub == None:
+                    return_message = f"Error getting process '{arg_v[3]}'."
+                else:
+                    if not sub.process == None:
+                        return_message = f"{arg_v[3]} is already running. Try 'restart {arg_v[3]}' instead."
+                        return_level = "ERROR"
+                    else:
+                        return_message = f"Started {arg_v[3]}"
+                        return_level = "WARNING"
+                        await self.launch(sub)
+        
+        self.main_pub.send_string(f"TELEMETRY ERROR [supervisor]: {return_message}")
+        color = color_map.get(return_level, "\033[0m")
+        print(f"{color}[supervisor]: {return_message}\033[0m")
 
 # -------------------------
 # Arg helper function

@@ -5,7 +5,7 @@
         "--webrtc_host": "0.0.0.0",
         "--webrtc_port": "3001",
         "--ignore_cameras": [
-            // My computer has some odd stuff installed, dont worry:
+            // My computer has some odd interfaces installed:
             "Game Capture HD60 Pro",
             "Meta Quest 3",
             "Meta Quest 3S",
