@@ -5,6 +5,11 @@
         "--webrtc_host": "0.0.0.0",
         "--webrtc_port": "3001",
         "--ignore_cameras": [
+            // Raspberry Pi Default stuff
+            "bcm2835-codec-decode",
+            "bcm2835-isp",
+            "rpi-hevc-dec",
+
             // My computer has some odd interfaces installed:
             "Game Capture HD60 Pro",
             "Meta Quest 3",

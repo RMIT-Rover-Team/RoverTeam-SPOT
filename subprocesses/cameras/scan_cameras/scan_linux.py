@@ -19,8 +19,6 @@ def scan_linux(ignore_list=None, logger=None):
             continue
 
         path = f"/dev/{dev}"
-        if path in ignore_list:
-            continue
 
         card = None
         bus = None
@@ -47,6 +45,10 @@ def scan_linux(ignore_list=None, logger=None):
 
         # If parsing failed, just use the path as the label
         label = card if card else path
+
+        # Skip ignore-list items
+        if label in ignore_list:
+            continue
 
         # Skip duplicates only if bus info is available
         if bus and bus in seen_buses:
