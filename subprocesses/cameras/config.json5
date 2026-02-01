@@ -8,6 +8,7 @@
             // Raspberry Pi Default stuff
             "bcm2835-codec-decode",
             "bcm2835-codec-encode",
+            "bcm2835-codec-isp",
             "bcm2835-isp",
             "rpi-hevc-dec",
 
