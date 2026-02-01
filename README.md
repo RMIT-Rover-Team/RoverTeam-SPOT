@@ -12,6 +12,10 @@ And add it to your `PATH` in your `.bashrc` file:
 ```bash
 export PATH="/home/<your username>/.local/bin:$PATH"
 ```
+Then load the changes into your current terminal session:
+```bash
+source .bashrc
+```
 You can test it has installed correctly:
 ```bash
 poetry --version
