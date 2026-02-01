@@ -34,7 +34,7 @@ class V4L2CameraTrack(VideoStreamTrack):
         Get the next frame from MediaPlayer.video in a way compatible with aiortc.
         """
         if not hasattr(self.player, "video") or self.player.video is None:
-            logger.warning("No video track available from MediaPlayer")
+            logging.warning("No video track available from MediaPlayer")
             raise asyncio.CancelledError()
 
         frame = await self.player.video.recv()
