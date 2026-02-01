@@ -1,6 +1,8 @@
 # First Time Installation
 The following guide is for the first-time installation on a Linux system.
 
+Start by ensuring you have all of the required dependencies installed:
+
 ## Install Poetry
 Ensure you have Poetry installed on your machine:
 ```bash
@@ -13,6 +15,12 @@ export PATH="/home/<your username>/.local/bin:$PATH"
 You can test it has installed correctly:
 ```bash
 poetry --version
+```
+
+## Install V4L Utilities
+V4L Utilities is required to scan for available cameras on linux machines. This is only required if you intend on using the 'cameras' subprocess.
+```bash
+sudo apt install v4l-utils
 ```
 
 ## Clone the Repository
