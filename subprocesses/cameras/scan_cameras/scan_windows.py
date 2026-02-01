@@ -1,5 +1,6 @@
 import subprocess
 import re
+import fnmatch
 
 def scan_windows(ignore_list, logger):
     cmd = [
@@ -30,7 +31,10 @@ def scan_windows(ignore_list, logger):
 
         match = re.search(r'"(.+)"', line)
         if match:
-            if match.group(1) in ignore_list:
+            label = match.group(1)
+
+            # Skip if in the ignore-list, but still increment
+            if any(fnmatch.fnmatch(label, pattern) for pattern in ignore_list):
                 i+=1
                 continue
 

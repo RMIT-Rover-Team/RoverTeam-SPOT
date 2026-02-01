@@ -1,6 +1,7 @@
 # scan_linux.py
 import subprocess
 import os
+import fnmatch
 
 def scan_linux(ignore_list=None, logger=None):
     """
@@ -47,9 +48,9 @@ def scan_linux(ignore_list=None, logger=None):
         label = card if card else path
 
         # Skip ignore-list items
-        if label in ignore_list:
+        if any(fnmatch.fnmatch(label, pattern) for pattern in ignore_list):
             continue
-
+        
         # Skip duplicates only if bus info is available
         if bus and bus in seen_buses:
             if logger:
