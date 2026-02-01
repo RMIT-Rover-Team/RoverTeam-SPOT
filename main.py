@@ -14,8 +14,8 @@ import zmq.asyncio
 # CONFIG
 # -------------------------
 SUBSYSTEMS_DIR = Path(__file__).parent / "subprocesses"
-HEARTBEAT_INTERVAL = 5.0
-HEARTBEAT_TIMEOUT = 10.0
+HEARTBEAT_INTERVAL = 10.0
+HEARTBEAT_TIMEOUT = 20.0
 RESTART_DELAY = 2.0
 SHOW_DEBUG = False # WARNING!! If you enable this, weird stuff happens because we debug the telemetry which becomes a loop
 
