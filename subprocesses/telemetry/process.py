@@ -38,7 +38,7 @@ async def receive_loop(sub_socket):
 
             if msg.startswith("TELEMETRY "):
                 if not any(ext in msg for ext in filter_list):
-                    broadcast(msg[len("TELEMETRY "):])
+                    await broadcast(msg[len("TELEMETRY "):])
         except zmq.Again:
             await asyncio.sleep(0.01)  # prevent CPU spin
 
@@ -54,8 +54,7 @@ async def vitals_loop(interval: float):
     while True:
         vitals = collect_vitals()
         msg = json.dumps({"type": "vitals", "data":vitals})
-        broadcast(f"JSON {msg}")
-        broadcast("")
+        await broadcast(f"JSON {msg}")
         await asyncio.sleep(interval)
 
 # -------------------------
@@ -78,7 +77,7 @@ async def main(heartbeat_interval: float, sub_url: str, webrtc_host: str, webrtc
         await asyncio.gather(receive_task, heartbeat_task, webrtc_task)
     except asyncio.CancelledError:
         logging.info("Shutdown received, cancelling tasks")
-        broadcast("ERROR [telemetry]: Telemetry shutting down, disconnecting...")
+        await broadcast("ERROR [telemetry]: Telemetry shutting down, disconnecting...")
     finally:
         receive_task.cancel()
         heartbeat_task.cancel()

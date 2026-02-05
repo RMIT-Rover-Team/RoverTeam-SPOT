@@ -1,3 +1,4 @@
-def handle_message(message, broadcast):
+# receiver.py
+async def handle_message(message, broadcast):
     print(f"SYSTEM CMD {message}")
-    broadcast(f"SUCCESS > {message}")
+    await broadcast(f"SUCCESS > {message}")

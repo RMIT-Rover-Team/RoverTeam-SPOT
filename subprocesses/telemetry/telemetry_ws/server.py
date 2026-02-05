@@ -15,10 +15,21 @@ clients: set[web.WebSocketResponse] = set()
 def get_client_count() -> int:
     return len(clients)
 
-def broadcast(message: str):
-    for ws in list(clients):
-        if not ws.closed:
-            ws.send_str(message)
+async def broadcast(message: str):
+    dead = []
+
+    for ws in clients:
+        if ws.closed:
+            dead.append(ws)
+            continue
+
+        try:
+            await ws.send_str(message)
+        except Exception:
+            dead.append(ws)
+
+    for ws in dead:
+        clients.discard(ws)
 
 # -------------------------
 # WEBSOCKET HANDLER
@@ -36,7 +47,7 @@ async def websocket_handler(request):
     try:
         async for msg in ws:
             if msg.type == WSMsgType.TEXT:
-                handle_message(msg.data, broadcast)
+                await handle_message(msg.data, broadcast)
 
             elif msg.type == WSMsgType.ERROR:
                 logging.warning(
