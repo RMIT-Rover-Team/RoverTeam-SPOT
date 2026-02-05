@@ -6,10 +6,8 @@ import logging
 import zmq
 import zmq.asyncio
 
-from webrtc.server import (
-    start_webrtc_server,
-    get_peer_count,
-    get_channel_count,
+from telemetry_ws.server import (
+    start_telemetry_server,
     broadcast,
 )
 
@@ -73,7 +71,7 @@ async def main(heartbeat_interval: float, sub_url: str, webrtc_host: str, webrtc
     # Start async tasks
     receive_task = asyncio.create_task(receive_loop(sub_socket))
     heartbeat_task = asyncio.create_task(heartbeat_loop(heartbeat_interval))
-    webrtc_task = asyncio.create_task(start_webrtc_server(webrtc_host, webrtc_port))
+    webrtc_task = asyncio.create_task(start_telemetry_server(webrtc_host, webrtc_port))
     vitals_task = asyncio.create_task(vitals_loop(vitals_interval))
 
     try:

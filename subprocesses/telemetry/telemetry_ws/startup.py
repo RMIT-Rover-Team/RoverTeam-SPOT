@@ -1,0 +1,13 @@
+async def send_startup_message(send):
+    await send("CLEARSCREEN")
+    await send("INFO Starting...")
+    await send("WARNING \n   _______  ____  ______")
+    await send("WARNING   / __/ _ \\/ __ \\/_  __/")
+    await send("WARNING  _\\ \\/ ___/ /_/ / / /")
+    await send("WARNING /___/_/   \\____/ /_/")  
+    await send("WARNING SOFTWARE PLATFORM for")
+    await send("WARNING ONBOARD TELEMETRY")
+    await send("INFO \nDesigned for the:")
+    await send("WARNING \n⣏⡉ ⡎⢱ ⡇⢸ ⡇ ⡷⣸ ⡎⢱ ⢇⡸")
+    await send("WARNING ⠧⠤ ⠣⠪ ⠣⠜ ⠇ ⠇⠹ ⠣⠜ ⠇⠸")
+    await send("WARNING SOFTWARE STACK\n\n")
