@@ -1,6 +1,9 @@
 # Poetry virtual environment
 .venv/
 
+# IDE files
+.vscode/
+
 # Poetry lock file (ignore if you don't want it committed)
 poetry.lock
 

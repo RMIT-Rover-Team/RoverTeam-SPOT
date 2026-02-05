@@ -89,11 +89,11 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--heartbeat", type=float, default=1.0, help="Heartbeat interval in seconds")
     parser.add_argument("--sub_url", type=str, default="tcp://127.0.0.1:5555", help="ZMQ SUB socket URL")
-    parser.add_argument("--webrtc_host", type=str, default="0.0.0.0", help="WebRTC server host")
-    parser.add_argument("--webrtc_port", type=int, default=3002, help="WebRTC server port")
+    parser.add_argument("--ws_host", type=str, default="0.0.0.0", help="Web Socket server host")
+    parser.add_argument("--ws_port", type=int, default=3002, help="Web Socket server port")
     parser.add_argument("--vitals_interval", type=float, default=10, help="Vitals interval in seconds")
     parser.add_argument("--ignore_filter", default=[], action="append", help="Filter out logs containing these strings")
     args = parser.parse_args()
     filter_list = args.ignore_filter
 
-    asyncio.run(main(args.heartbeat, args.sub_url, args.webrtc_host, args.webrtc_port, args.vitals_interval))
+    asyncio.run(main(args.heartbeat, args.sub_url, args.ws_host, args.ws_port, args.vitals_interval))

@@ -14,7 +14,8 @@ dependencies = [
     "aiortc (>=1.14.0,<2.0.0)",
     "av (>=16.1.0,<17.0.0)",
     "psutil (>=7.2.2,<8.0.0)",
-    "opencv-python (>=4.13.0.90,<5.0.0.0); sys_platform == 'win32'"
+    "opencv-python (>=4.13.0.90,<5.0.0.0); sys_platform == 'win32'",
+    "websockets (>=16.0,<17.0)"
 ]
 
 [build-system]

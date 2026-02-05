@@ -2,8 +2,8 @@
     "name": "telemetry",
     "priority": 0,
     "args": {
-        "--webrtc_host": "0.0.0.0",
-        "--webrtc_port": "3002",
+        "--ws_host": "0.0.0.0",
+        "--ws_port": "3002",
         "--vitals_interval": 10,
         "--ignore_filter": [
             // Ignore windows-based error with port binding
