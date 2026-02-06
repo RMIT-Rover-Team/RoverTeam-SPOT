@@ -60,6 +60,9 @@ async def websocket_handler(request):
 
     return ws
 
+async def handle_ping(request):
+    return web.Response(text="telemetry")
+
 # -------------------------
 # SERVER STARTUP
 # -------------------------
@@ -69,6 +72,7 @@ async def start_telemetry_server(
 ):
     app = web.Application(middlewares=[cors_middleware])
     app.router.add_get("/ws", websocket_handler)
+    app.router.add_get("/ping", handle_ping)
 
     runner = web.AppRunner(app)
     await runner.setup()
