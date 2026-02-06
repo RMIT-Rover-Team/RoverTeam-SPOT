@@ -4,7 +4,8 @@ import json
 import logging
 
 from gamepad_ws.receiver import Receiver
-from gamepad_ws.server import GamepadWSServer
+from gamepad_ws.server import GamepadServer
+from gamepad_ws.cors import cors_middleware
 
 # -------------------------
 # CONFIG
@@ -59,7 +60,7 @@ def handle_button(data):
 async def main(heartbeat_interval: float, ws_host: str, ws_port: int):
     # Setup Gamepad receiver/server
     receiver = Receiver(handle_gamepad_message)
-    gamepad_server = GamepadWSServer(ws_host, ws_port, receiver)
+    gamepad_server = GamepadServer(ws_host, ws_port, receiver)
     await gamepad_server.start()
 
     # Create tasks
@@ -83,6 +84,7 @@ async def main(heartbeat_interval: float, ws_host: str, ws_port: int):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--heartbeat", type=float, default=1.0, help="Heartbeat interval in seconds")
+    parser.add_argument("--sub_url", type=str)
     parser.add_argument("--ws_host", type=str, default="0.0.0.0", help="WebSocket host")
     parser.add_argument("--ws_port", type=int, default=8765, help="WebSocket port")
     args = parser.parse_args()

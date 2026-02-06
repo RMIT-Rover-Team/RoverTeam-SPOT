@@ -3,7 +3,7 @@
     "priority": 0,
     "args": {
         "--ws_host": "0.0.0.0",
-        "--ws_port": "3002",
+        "--ws_port": "5005",
         "--vitals_interval": 10,
         "--ignore_filter": [
             // Ignore windows-based error with port binding
