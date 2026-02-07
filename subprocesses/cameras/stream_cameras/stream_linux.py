@@ -37,12 +37,14 @@ class V4L2CameraTrack(VideoStreamTrack):
         self.logger.warning(f"[{self.label}] Forcing device release")
 
         subprocess.run(["fuser", "-k", self.device],
-                       stdout=subprocess.DEVNULL,
-                       stderr=subprocess.DEVNULL)
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL
+        )
 
         subprocess.run(["pkill", "-9", "ffmpeg"],
-                       stdout=subprocess.DEVNULL,
-                       stderr=subprocess.DEVNULL)
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL
+        )
 
         time.sleep(0.3)
 
@@ -84,14 +86,6 @@ class V4L2CameraTrack(VideoStreamTrack):
             format="v4l2",
             options=options,
         )
-
-        # Hard validate format (prevents silent breakage)
-        stream = self.player.video._container.streams.video[0]
-        pix = stream.codec_context.pix_fmt
-
-        if "mjpeg" not in pix.lower():
-            raise RuntimeError(f"Camera returned {pix} instead of MJPEG")
-
     # --------------------------------------------------
 
     async def recv(self):
