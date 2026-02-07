@@ -55,6 +55,12 @@ class V4L2CameraTrack(VideoStreamTrack):
                 self._release_device_if_busy()
 
                 try:
+                    subprocess.run([
+                        "v4l2-ctl",
+                        "-d", self.device,
+                        f"--set-fmt-video=width={self.width},height={self.height},pixelformat=MJPG"
+                    ], check=False)
+
                     self.logger.info(f"[{self.label}] Attempting to open {self.device}")
                     self.player = MediaPlayer(self.device, format="v4l2", options=self.options)
 
@@ -72,31 +78,7 @@ class V4L2CameraTrack(VideoStreamTrack):
                     await asyncio.sleep(self.RETRY_INTERVAL)
 
     def _release_device_if_busy(self):
-        """
-        Kill any processes currently using /dev/videoX.
-        """
-        try:
-            result = subprocess.run(["fuser", "-v", self.device],
-                                    capture_output=True, text=True)
-            lines = result.stdout.splitlines()
-            if len(lines) > 1:
-                # Processes exist
-                pids = []
-                for line in lines[1:]:
-                    parts = line.split()
-                    if parts and parts[0].isdigit():
-                        pids.append(int(parts[0]))
-                if pids:
-                    self.logger.warning(f"[{self.label}] Device busy, killing PIDs: {pids}")
-                    for pid in pids:
-                        try:
-                            os.kill(pid, 9)
-                        except Exception as e:
-                            self.logger.warning(f"[{self.label}] Failed to kill PID {pid}: {e}")
-        except FileNotFoundError:
-            self.logger.warning(f"[{self.label}] fuser command not found, cannot release device")
-        except Exception as e:
-            self.logger.warning(f"[{self.label}] Error releasing device: {e}")
+        subprocess.run(["fuser", "-k", self.device], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
     async def recv(self) -> VideoFrame:
         """
@@ -126,14 +108,9 @@ class V4L2CameraTrack(VideoStreamTrack):
             return await self.player.video.recv()
 
     def stop(self):
-        """
-        Cleanly stop the track and player.
-        """
         try:
             if self.player:
-                self.player = None
-            super().stop()
-            self._opened = False
-            self.logger.info(f"[{self.label}] Camera stopped")
-        except Exception as e:
-            self.logger.warning(f"[{self.label}] Error stopping camera: {e}")
+                self.player.video.stop()
+                self.player.audio and self.player.audio.stop()
+        except Exception:
+            pass
