@@ -2,7 +2,7 @@
 import os
 import fnmatch
 
-def scan_linux_safe(ignore_list=None, logger=None):
+def scan_linux(ignore_list=None, logger=None):
     """
     Scan Linux video devices without opening /dev/video*.
     Avoids duplicates by USB bus if possible.
