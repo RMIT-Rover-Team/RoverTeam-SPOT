@@ -15,13 +15,16 @@ class V4L2CameraTrack(VideoStreamTrack):
     RETRY_DELAY = 2
     MAX_RETRIES = 10
 
-    def __init__(self, index: int, label: str, logger: logging.Logger):
+    def __init__(self, index: int, label: str, logger: logging.Logger, width: int, height: int):
         super().__init__()
 
         self.index = index
         self.label = label
         self.logger = logger
         self.device = f"/dev/video{index}"
+
+        self.WIDTH = width
+        self.HEIGHT = height
 
         if not os.path.exists(self.device):
             raise RuntimeError(f"{self.device} not found")
