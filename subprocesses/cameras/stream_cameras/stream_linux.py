@@ -115,13 +115,15 @@ class V4L2CameraTrack(VideoStreamTrack):
         await self._open_player()
 
     def stop(self):
-        """Stop the track and clean up the MediaPlayer."""
-        if self.player:
-            try:
-                self.player.stop()
-                self.logger.info(f"Camera {self.label} stopped")
-            except Exception as e:
-                self.logger.warning(f"Error stopping camera {self.label}: {e}")
-            self.player = None
+        """
+        Safely stop the camera track and release resources.
+        """
+        try:
+            if self.player:
+                # terminate ffmpeg process if exists
+                if hasattr(self.player, "_process") and self.player._process:
+                    self.player._process.kill()
+                self.player = None
+        except Exception as e:
+            self.logger.warning(f"Error stopping camera {self.label}: {e}")
         super().stop()
-        self._release_device_if_busy()
