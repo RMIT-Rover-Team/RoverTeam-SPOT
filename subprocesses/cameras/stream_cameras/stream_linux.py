@@ -1,116 +1,134 @@
 import os
-import logging
 import asyncio
+import logging
 import subprocess
+import time
 from aiortc import VideoStreamTrack
 from aiortc.contrib.media import MediaPlayer
-from av import VideoFrame
+
 
 class V4L2CameraTrack(VideoStreamTrack):
-    """
-    Robust Linux V4L2 camera track for mission-critical streaming.
-    Ensures /dev/videoX is free, retries until success, and handles dead frames.
-    """
-    RETRY_INTERVAL = 2  # seconds
-    FIRST_FRAME_TIMEOUT = 5  # seconds
+    WIDTH = 640
+    HEIGHT = 480
+    FPS = 30
 
-    def __init__(self, index: int, label: str, logger: logging.Logger, width=640, height=480):
+    RETRY_DELAY = 2
+    MAX_RETRIES = 10
+
+    def __init__(self, index: int, label: str, logger: logging.Logger):
         super().__init__()
+
         self.index = index
         self.label = label
         self.logger = logger
         self.device = f"/dev/video{index}"
-        self.width = width
-        self.height = height
-        self.options = {
-            "format": "v4l2",
-            "video_size": f"{width}x{height}",
-            "framerate": "30",
-            "input_format": "mjpeg",
-        }
 
         if not os.path.exists(self.device):
-            raise Exception(f"Camera {label} ({index}) not found at {self.device}")
+            raise RuntimeError(f"{self.device} not found")
 
-        self.player: MediaPlayer | None = None
-        self._opened = False
-        self._lock = asyncio.Lock()
+        self.player = None
 
-    async def _open_player(self):
-        """
-        Attempt to open the camera, retrying indefinitely until success.
-        Also validates the first frame to avoid dead streams.
-        """
-        async with self._lock:
-            while not self._opened:
-                # Clean up any previous player
-                if self.player:
-                    self.logger.debug(f"[{self.label}] Cleaning up old player")
-                    try:
-                        self.player = None
-                    except Exception as e:
-                        self.logger.warning(f"[{self.label}] Error cleaning old player: {e}")
+    # --------------------------------------------------
 
-                # Forcefully release /dev/videoX
-                self._release_device_if_busy()
+    def _nuke_device(self):
+        self.logger.warning(f"[{self.label}] Forcing device release")
 
-                try:
-                    subprocess.run([
-                        "v4l2-ctl",
-                        "-d", self.device,
-                        f"--set-fmt-video=width={self.width},height={self.height},pixelformat=MJPG"
-                    ], check=False)
+        subprocess.run(["fuser", "-k", self.device],
+                       stdout=subprocess.DEVNULL,
+                       stderr=subprocess.DEVNULL)
 
-                    self.logger.info(f"[{self.label}] Attempting to open {self.device}")
-                    self.player = MediaPlayer(self.device, format="v4l2", options=self.options)
+        subprocess.run(["pkill", "-9", "ffmpeg"],
+                       stdout=subprocess.DEVNULL,
+                       stderr=subprocess.DEVNULL)
 
-                    # Check first frame is valid
-                    frame = await asyncio.wait_for(self.player.video.recv(), timeout=self.FIRST_FRAME_TIMEOUT)
-                    if frame is None or frame.to_ndarray().size == 0:
-                        raise Exception("Received empty frame, retrying")
+        time.sleep(0.3)
 
-                    self._opened = True
-                    self.logger.info(f"[{self.label}] Camera opened successfully")
-                    return
+    # --------------------------------------------------
 
-                except Exception as e:
-                    self.logger.warning(f"[{self.label}] Failed to open camera: {e}. Retrying in {self.RETRY_INTERVAL}s")
-                    await asyncio.sleep(self.RETRY_INTERVAL)
+    def _force_mjpeg(self):
+        subprocess.run(
+            [
+                "v4l2-ctl",
+                "-d", self.device,
+                f"--set-fmt-video=width={self.WIDTH},height={self.HEIGHT},pixelformat=MJPG"
+            ],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL
+        )
 
-    def _release_device_if_busy(self):
-        subprocess.run(["fuser", "-k", self.device], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        subprocess.run(
+            ["v4l2-ctl", "-d", self.device, f"--set-parm={self.FPS}"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL
+        )
 
-    async def recv(self) -> VideoFrame:
-        """
-        Return the next video frame from the camera.
-        Opens the player if not already opened.
-        """
-        if not self._opened:
-            await self._open_player()
+    # --------------------------------------------------
 
-        if not self.player or not self.player.video:
-            self.logger.warning(f"[{self.label}] No video track available, retrying player")
-            self._opened = False
-            await self._open_player()
+    def _open_player(self):
+        self._nuke_device()
+        self._force_mjpeg()
 
-        try:
-            frame = await self.player.video.recv()
-            if frame is None or frame.to_ndarray().size == 0:
-                self.logger.warning(f"[{self.label}] Received empty frame, reopening camera")
-                self._opened = False
-                await self._open_player()
+        options = {
+            "input_format": "mjpeg",
+            "framerate": str(self.FPS),
+            "video_size": f"{self.WIDTH}x{self.HEIGHT}",
+        }
+
+        self.logger.info(f"[{self.label}] Opening MJPEG stream")
+
+        self.player = MediaPlayer(
+            self.device,
+            format="v4l2",
+            options=options,
+        )
+
+        # Hard validate format (prevents silent breakage)
+        stream = self.player.video._container.streams.video[0]
+        pix = stream.codec_context.pix_fmt
+
+        if "mjpeg" not in pix.lower():
+            raise RuntimeError(f"Camera returned {pix} instead of MJPEG")
+
+    # --------------------------------------------------
+
+    async def recv(self):
+        attempts = 0
+
+        while True:
+            try:
+                if not self.player:
+                    self._open_player()
+
                 frame = await self.player.video.recv()
-            return frame
-        except Exception as e:
-            self.logger.warning(f"[{self.label}] Error receiving frame: {e}. Reopening camera")
-            self._opened = False
-            await self._open_player()
-            return await self.player.video.recv()
+                return frame
 
-    def stop(self):
+            except Exception as e:
+                attempts += 1
+                self.logger.warning(
+                    f"[{self.label}] Camera error: {e} (attempt {attempts})"
+                )
+
+                self._cleanup()
+
+                if attempts >= self.MAX_RETRIES:
+                    raise RuntimeError(f"{self.label} failed permanently")
+
+                await asyncio.sleep(self.RETRY_DELAY)
+
+    # --------------------------------------------------
+
+    def _cleanup(self):
         try:
             if self.player:
-                self.player.video.stop()
-                self.player.audio and self.player.audio.stop()
-        except Exception:
-            pass
+                try:
+                    self.player.video.stop()
+                except Exception:
+                    pass
+        finally:
+            self.player = None
+
+    # --------------------------------------------------
+
+    def stop(self):
+        self._cleanup()
+        super().stop()
