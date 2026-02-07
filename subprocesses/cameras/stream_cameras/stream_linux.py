@@ -31,7 +31,6 @@ class V4L2CameraTrack(VideoStreamTrack):
             raise Exception(f"Camera {label} ({index}) not found at {self.device}")
 
         self.player: MediaPlayer | None = None
-        self._last_frame_time: float | None = None
         self.options = {
             "format": "v4l2",
             "video_size": f"{width}x{height}",
@@ -39,23 +38,41 @@ class V4L2CameraTrack(VideoStreamTrack):
             "input_format": "mjpeg",
         }
 
-        # Forcefully release device if busy
-        self._release_device_if_busy()
-
-        # Try to open the camera with retries
-        asyncio.get_event_loop().run_until_complete(self._open_player())
+        self._release_device_if_busy()  # still safe in constructor
+        self._player_open_lock = asyncio.Lock()  # prevent multiple concurrent opens
 
     async def _open_player(self):
-        for attempt in range(1, self.MAX_RETRIES + 1):
-            try:
-                self.player = MediaPlayer(self.device, format="v4l2", options=self.options)
-                self.logger.info(f"Camera {self.label} opened successfully on attempt {attempt}")
-                return
-            except Exception as e:
-                self.logger.warning(f"[Attempt {attempt}] Failed to open camera {self.label}: {e}")
-                if attempt == self.MAX_RETRIES:
-                    raise Exception(f"Failed to open camera {self.label} after {self.MAX_RETRIES} attempts")
-                await asyncio.sleep(self.RETRY_DELAY)
+        async with self._player_open_lock:
+            if self.player is not None:
+                return  # already open
+
+            for attempt in range(1, self.MAX_RETRIES + 1):
+                try:
+                    self.player = MediaPlayer(self.device, format="v4l2", options=self.options)
+                    self.logger.info(f"Camera {self.label} opened successfully on attempt {attempt}")
+                    return
+                except Exception as e:
+                    self.logger.warning(f"[Attempt {attempt}] Failed to open camera {self.label}: {e}")
+                    if attempt == self.MAX_RETRIES:
+                        raise Exception(f"Failed to open camera {self.label} after {self.MAX_RETRIES} attempts")
+                    await asyncio.sleep(self.RETRY_DELAY)
+
+    async def recv(self):
+        # make sure player is open before receiving frames
+        if self.player is None:
+            await self._open_player()
+
+        if not hasattr(self.player, "video") or self.player.video is None:
+            self.logger.warning(f"No video track available from {self.label}")
+            raise asyncio.CancelledError()
+
+        try:
+            frame = await asyncio.wait_for(self.player.video.recv(), timeout=self.STUCK_TIMEOUT)
+            return frame
+        except asyncio.TimeoutError:
+            self.logger.warning(f"Camera {self.label} appears stuck. Restarting MediaPlayer.")
+            await self._restart_player()
+            raise asyncio.CancelledError()
 
     def _release_device_if_busy(self):
         """Kill any processes using /dev/videoX to free the device."""
@@ -90,21 +107,6 @@ class V4L2CameraTrack(VideoStreamTrack):
             self.logger.warning("fuser command not found, cannot forcefully release camera")
         except Exception as e:
             self.logger.warning(f"Error checking camera device {self.device}: {e}")
-
-    async def recv(self):
-        """Get the next frame and detect stuck frames."""
-        if not self.player or not hasattr(self.player, "video") or self.player.video is None:
-            self.logger.warning(f"No video track available from {self.label}")
-            raise asyncio.CancelledError()
-
-        try:
-            frame = await asyncio.wait_for(self.player.video.recv(), timeout=self.STUCK_TIMEOUT)
-            self._last_frame_time = asyncio.get_event_loop().time()
-            return frame
-        except asyncio.TimeoutError:
-            self.logger.warning(f"Camera {self.label} appears stuck. Restarting MediaPlayer.")
-            await self._restart_player()
-            raise asyncio.CancelledError()
 
     async def _restart_player(self):
         """Stop and re-open the MediaPlayer if frames get stuck."""
