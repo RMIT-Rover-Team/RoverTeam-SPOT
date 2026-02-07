@@ -4,19 +4,15 @@ import asyncio
 import subprocess
 from aiortc import VideoStreamTrack
 from aiortc.contrib.media import MediaPlayer
+from av import VideoFrame
 
 class V4L2CameraTrack(VideoStreamTrack):
     """
-    Linux V4L2 camera track with robust device handling:
-    - Forcefully releases /dev/videoX if busy
-    - Retries opening MediaPlayer if fails
-    - Detects stuck frames and auto-restarts
-    - Cleans up properly on stop
+    Robust Linux V4L2 camera track for mission-critical streaming.
+    Ensures /dev/videoX is free, retries until success, and handles dead frames.
     """
-
-    MAX_RETRIES = 5       # Max attempts to open the camera
-    RETRY_DELAY = 1       # Seconds between attempts
-    STUCK_TIMEOUT = 2.0   # Seconds to detect a stuck frame
+    RETRY_INTERVAL = 2  # seconds
+    FIRST_FRAME_TIMEOUT = 5  # seconds
 
     def __init__(self, index: int, label: str, logger: logging.Logger, width=640, height=480):
         super().__init__()
@@ -26,11 +22,6 @@ class V4L2CameraTrack(VideoStreamTrack):
         self.device = f"/dev/video{index}"
         self.width = width
         self.height = height
-
-        if not os.path.exists(self.device):
-            raise Exception(f"Camera {label} ({index}) not found at {self.device}")
-
-        self.player: MediaPlayer | None = None
         self.options = {
             "format": "v4l2",
             "video_size": f"{width}x{height}",
@@ -38,92 +29,111 @@ class V4L2CameraTrack(VideoStreamTrack):
             "input_format": "mjpeg",
         }
 
-        self._release_device_if_busy()  # still safe in constructor
-        self._player_open_lock = asyncio.Lock()  # prevent multiple concurrent opens
+        if not os.path.exists(self.device):
+            raise Exception(f"Camera {label} ({index}) not found at {self.device}")
+
+        self.player: MediaPlayer | None = None
+        self._opened = False
+        self._lock = asyncio.Lock()
 
     async def _open_player(self):
-        async with self._player_open_lock:
-            if self.player is not None:
-                return  # already open
+        """
+        Attempt to open the camera, retrying indefinitely until success.
+        Also validates the first frame to avoid dead streams.
+        """
+        async with self._lock:
+            while not self._opened:
+                # Clean up any previous player
+                if self.player:
+                    self.logger.debug(f"[{self.label}] Cleaning up old player")
+                    try:
+                        self.player = None
+                    except Exception as e:
+                        self.logger.warning(f"[{self.label}] Error cleaning old player: {e}")
 
-            for attempt in range(1, self.MAX_RETRIES + 1):
+                # Forcefully release /dev/videoX
+                self._release_device_if_busy()
+
                 try:
+                    self.logger.info(f"[{self.label}] Attempting to open {self.device}")
                     self.player = MediaPlayer(self.device, format="v4l2", options=self.options)
-                    self.logger.info(f"Camera {self.label} opened successfully on attempt {attempt}")
+
+                    # Check first frame is valid
+                    frame = await asyncio.wait_for(self.player.video.recv(), timeout=self.FIRST_FRAME_TIMEOUT)
+                    if frame is None or frame.to_ndarray().size == 0:
+                        raise Exception("Received empty frame, retrying")
+
+                    self._opened = True
+                    self.logger.info(f"[{self.label}] Camera opened successfully")
                     return
+
                 except Exception as e:
-                    self.logger.warning(f"[Attempt {attempt}] Failed to open camera {self.label}: {e}")
-                    if attempt == self.MAX_RETRIES:
-                        raise Exception(f"Failed to open camera {self.label} after {self.MAX_RETRIES} attempts")
-                    await asyncio.sleep(self.RETRY_DELAY)
-
-    async def recv(self):
-        # make sure player is open before receiving frames
-        if self.player is None:
-            await self._open_player()
-
-        if not hasattr(self.player, "video") or self.player.video is None:
-            self.logger.warning(f"No video track available from {self.label}")
-            raise asyncio.CancelledError()
-
-        try:
-            frame = await asyncio.wait_for(self.player.video.recv(), timeout=self.STUCK_TIMEOUT)
-            return frame
-        except asyncio.TimeoutError:
-            self.logger.warning(f"Camera {self.label} appears stuck. Restarting MediaPlayer.")
-            await self._restart_player()
-            raise asyncio.CancelledError()
+                    self.logger.warning(f"[{self.label}] Failed to open camera: {e}. Retrying in {self.RETRY_INTERVAL}s")
+                    await asyncio.sleep(self.RETRY_INTERVAL)
 
     def _release_device_if_busy(self):
-        """Kill any processes using /dev/videoX to free the device."""
+        """
+        Kill any processes currently using /dev/videoX.
+        """
         try:
-            # fuser method
-            result = subprocess.run(["fuser", "-v", self.device], capture_output=True, text=True)
+            result = subprocess.run(["fuser", "-v", self.device],
+                                    capture_output=True, text=True)
             lines = result.stdout.splitlines()
-            pids = []
-            for line in lines[1:]:
-                parts = line.split()
-                if parts and parts[0].isdigit():
-                    pids.append(int(parts[0]))
-            for pid in pids:
-                try:
-                    os.kill(pid, 9)
-                    self.logger.warning(f"Killed process {pid} using {self.device}")
-                except Exception as e:
-                    self.logger.warning(f"Failed to kill PID {pid}: {e}")
-
-            # additional check for lingering ffmpeg/v4l2-ctl processes
-            extra = subprocess.run(["pgrep", "-f", self.device], capture_output=True, text=True)
-            for pid_str in extra.stdout.splitlines():
-                if pid_str.isdigit():
-                    pid = int(pid_str)
-                    try:
-                        os.kill(pid, 9)
-                        self.logger.warning(f"Killed extra process {pid} using {self.device}")
-                    except Exception as e:
-                        self.logger.warning(f"Failed to kill extra PID {pid}: {e}")
-
+            if len(lines) > 1:
+                # Processes exist
+                pids = []
+                for line in lines[1:]:
+                    parts = line.split()
+                    if parts and parts[0].isdigit():
+                        pids.append(int(parts[0]))
+                if pids:
+                    self.logger.warning(f"[{self.label}] Device busy, killing PIDs: {pids}")
+                    for pid in pids:
+                        try:
+                            os.kill(pid, 9)
+                        except Exception as e:
+                            self.logger.warning(f"[{self.label}] Failed to kill PID {pid}: {e}")
         except FileNotFoundError:
-            self.logger.warning("fuser command not found, cannot forcefully release camera")
+            self.logger.warning(f"[{self.label}] fuser command not found, cannot release device")
         except Exception as e:
-            self.logger.warning(f"Error checking camera device {self.device}: {e}")
+            self.logger.warning(f"[{self.label}] Error releasing device: {e}")
 
-    async def _restart_player(self):
-        """Stop and re-open the MediaPlayer if frames get stuck."""
-        self.stop()
-        self._release_device_if_busy()
-        await self._open_player()
+    async def recv(self) -> VideoFrame:
+        """
+        Return the next video frame from the camera.
+        Opens the player if not already opened.
+        """
+        if not self._opened:
+            await self._open_player()
+
+        if not self.player or not self.player.video:
+            self.logger.warning(f"[{self.label}] No video track available, retrying player")
+            self._opened = False
+            await self._open_player()
+
+        try:
+            frame = await self.player.video.recv()
+            if frame is None or frame.to_ndarray().size == 0:
+                self.logger.warning(f"[{self.label}] Received empty frame, reopening camera")
+                self._opened = False
+                await self._open_player()
+                frame = await self.player.video.recv()
+            return frame
+        except Exception as e:
+            self.logger.warning(f"[{self.label}] Error receiving frame: {e}. Reopening camera")
+            self._opened = False
+            await self._open_player()
+            return await self.player.video.recv()
 
     def stop(self):
         """
-        Safely stop the camera track and release resources.
+        Cleanly stop the track and player.
         """
         try:
             if self.player:
-                # terminate ffmpeg process if exists
-                if hasattr(self.player, "_process") and self.player._process:
-                    self.player._process.kill()
                 self.player = None
+            super().stop()
+            self._opened = False
+            self.logger.info(f"[{self.label}] Camera stopped")
         except Exception as e:
-            self.logger.warning(f"Error stopping camera {self.label}: {e}")
-        super().stop()
+            self.logger.warning(f"[{self.label}] Error stopping camera: {e}")
