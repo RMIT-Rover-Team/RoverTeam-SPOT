@@ -1,4 +1,4 @@
-# scan_linux_safe.py
+# scan_linux.py
 import os
 import fnmatch
 
