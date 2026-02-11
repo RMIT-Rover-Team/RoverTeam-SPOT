@@ -21,7 +21,7 @@ class GamepadServer:
         host: str,
         port: int,
         receiver: Receiver,
-        service_name: str = "arm",
+        service_name: str = "drive",
         *,
         cors_middleware: Optional[list] = None,  # optional middleware list
     ):
