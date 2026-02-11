@@ -63,10 +63,21 @@ def handle_button(data):
         analog = data.get("analog", 0)
         max_speed = 150  # example units
         speed = analog * max_speed
-        set_velocity(1, speed)
+        set_velocity(1, -speed)
         set_velocity(2, speed)
-        set_velocity(3, speed)
+        set_velocity(3, -speed)
         set_velocity(4, speed)
+
+    elif button_id == 6:
+        # assume ODrive.set_speed takes a float -1.0..1.0
+        # scale trigger (0..1) to speed (0..max_speed)
+        analog = data.get("analog", 0)
+        max_speed = 150  # example units
+        speed = analog * max_speed
+        set_velocity(1, speed)
+        set_velocity(2, -speed)
+        set_velocity(3, speed)
+        set_velocity(4, -speed)
 
 startup(1)
 startup(2)
