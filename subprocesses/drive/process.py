@@ -7,6 +7,8 @@ from gamepad_ws.receiver import Receiver
 from gamepad_ws.server import GamepadServer
 from gamepad_ws.cors import cors_middleware
 
+from canbus.ODrive import set_speed
+
 # -------------------------
 # CONFIG
 # -------------------------
@@ -40,22 +42,29 @@ async def handle_gamepad_message(msg: dict):
             handle_axis({"id": i, "value": value})
 
         for i, pressed in enumerate(buttons):
-            handle_button({"id": i, "pressed": pressed > 0})
+            handle_button({"id": i, "pressed": pressed > 0, "analog": pressed})
     else:
         logger.warning("unknown gamepad message: %s", msg)
 
 def handle_axis(data):
     axis_id = data["id"]
     value = data["value"]
-    logger.warning("Axis %d → %.3f", axis_id, value)
+    # logger.warning("Axis %d → %.3f", axis_id, value)
     # TODO: Forward to rover control loop
 
 
 def handle_button(data):
     button_id = data["id"]
     pressed = data["pressed"]
-    logger.warning("Button %d → %s", button_id, pressed)
-    # TODO: Toggle modes, arm/disarm, etc.
+    
+    if button_id == 7:
+        # assume ODrive.set_speed takes a float -1.0..1.0
+        # scale trigger (0..1) to speed (0..max_speed)
+        analog = data.get("analog", 0)
+        max_speed = 5.0  # example units
+        speed = analog * max_speed
+        set_speed(1, speed)
+
 
 # -------------------------
 # MAIN
