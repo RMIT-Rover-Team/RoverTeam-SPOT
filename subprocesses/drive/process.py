@@ -7,7 +7,7 @@ from gamepad_ws.receiver import Receiver
 from gamepad_ws.server import GamepadServer
 from gamepad_ws.cors import cors_middleware
 
-from canbus.ODrive import set_speed
+from canbus.ODrive import set_velocity, startup
 
 # -------------------------
 # CONFIG
@@ -63,7 +63,9 @@ def handle_button(data):
         analog = data.get("analog", 0)
         max_speed = 5.0  # example units
         speed = analog * max_speed
-        set_speed(1, speed)
+        set_velocity(4, speed)
+
+startup(4)
 
 
 # -------------------------
