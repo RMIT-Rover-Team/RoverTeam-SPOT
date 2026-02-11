@@ -31,22 +31,25 @@ async def heartbeat_loop(interval: float):
 # Gamepad Handlers
 # -------------------------
 async def handle_gamepad_message(msg: dict):
-    msg_type = msg.get("type")
-    data = msg.get("data")
+    if "buttons" in msg and "axes" in msg:
+        # New frontend format: batch buttons and axes
+        buttons = msg["buttons"]
+        axes = msg["axes"]
 
-    match msg_type:
-        case "axis":
-            handle_axis(data)
-        case "button":
-            handle_button(data)
-        case _:
-            logger.warning("Unknown gamepad message: %s", msg)
+        for i, value in enumerate(axes):
+            handle_axis({"id": i, "value": value})
+
+        for i, pressed in enumerate(buttons):
+            handle_button({"id": i, "pressed": pressed > 0})
+    else:
+        logger.warning("unknown gamepad message: %s", msg)
 
 def handle_axis(data):
     axis_id = data["id"]
     value = data["value"]
     logger.debug("Axis %d → %.3f", axis_id, value)
     # TODO: Forward to rover control loop
+
 
 def handle_button(data):
     button_id = data["id"]
