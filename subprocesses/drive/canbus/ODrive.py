@@ -119,8 +119,6 @@ def set_velocity(node_id: int, velocity: float, torque_feedforward: float = 0.0)
         print("[ERROR] CAN bus not available")
         return False
 
-    velocity*=10
-
     # ODrive expects two floats: velocity first, then torque feedforward
     payload = struct.pack("<ff", velocity, torque_feedforward)
     msg_id = (node_id << 5) | SET_INPUT_VEL
