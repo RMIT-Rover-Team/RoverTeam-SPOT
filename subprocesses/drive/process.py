@@ -47,14 +47,14 @@ async def handle_gamepad_message(msg: dict):
 def handle_axis(data):
     axis_id = data["id"]
     value = data["value"]
-    logger.debug("Axis %d → %.3f", axis_id, value)
+    logger.warning("Axis %d → %.3f", axis_id, value)
     # TODO: Forward to rover control loop
 
 
 def handle_button(data):
     button_id = data["id"]
     pressed = data["pressed"]
-    logger.debug("Button %d → %s", button_id, pressed)
+    logger.warning("Button %d → %s", button_id, pressed)
     # TODO: Toggle modes, arm/disarm, etc.
 
 # -------------------------
