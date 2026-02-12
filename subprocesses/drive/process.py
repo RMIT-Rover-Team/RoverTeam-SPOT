@@ -76,12 +76,14 @@ async def handle_gamepad_message(msg: dict, receiver):
     # Arm ODrives on first control message
     if "control_active" in msg:
         if receiver.control_active:
+            print(f"[INFO] Arming ODrives, Clearing Errors")
             for od in odrives.values():
                 if not od.is_armed:
                     od.arm()
 
         if not receiver.control_active:
             for od in odrives.values():
+                print(f"[INFO] Disarming ODrives")
                 if od.is_armed:
                     od.disarm()
     elif "buttons" in msg and "axes" in msg:

@@ -48,6 +48,8 @@ handler.setFormatter(AnsiFormatter())
 log.addHandler(handler)
 log.setLevel(SHOW_DEBUG and logging.DEBUG or logging.INFO)
 
+shutdown_ready = False
+
 color_map = {
     "DEBUG": "\033[90m",
     "INFO": "\033[0m",
@@ -373,10 +375,51 @@ class Supervisor:
         await asyncio.gather(*(self.kill_subsystem(sub) for sub in self.subsystems.values()))
         log.info("[supervisor]: All subsystems have been terminated")
 
+    def shutdown(self):
+        """
+        Cleanly shuts down all subsystems and exits the supervisor.
+        Can be called from signals or commands.
+        """
+        if self._stopping:
+            log.warning("[supervisor]: Shutdown already in progress")
+            return
+
+        log.info("[supervisor]: Initiating full shutdown...")
+
+        # Mark stopping flag so monitor loop stops
+        self._stopping = True
+
+        async def _shutdown():
+            # Stop all subsystems
+            await self.stop_all()
+
+            # Give a moment to flush logs / sockets
+            await asyncio.sleep(0.1)
+
+            log.info("[supervisor]: Exiting supervisor process")
+            # Close ZMQ cleanly
+            self.main_pub.close()
+            self.zmq_ctx.term()
+
+            # Stop the event loop safely
+            self.loop.stop()
+
+        # Schedule the coroutine
+        asyncio.create_task(_shutdown())
+
     async def handle_command(self, arg_c: int, arg_v):
         return_message = "Invalid command"
         return_level = "ERROR"
-        if arg_c <= 2:
+
+        if shutdown_ready:
+            if arg_c == 3 and arg_v[2] == "y":
+                return_message = "Shutting down..."
+                self.shutdown()
+            else:
+                return_message = "Canceled shutdown"
+                shutdown_ready = False
+
+        elif arg_c <= 2:
             return_message = "No command specified"
         
         # restart
@@ -430,6 +473,11 @@ class Supervisor:
                         return_message = f"Started {arg_v[3]}"
                         return_level = "WARNING"
                         await self.launch(sub)
+
+        # shutdown
+        elif arg_v[2] == "shutdown":
+            return_message = "Are you sure you want to shutdown? [y/n]:"
+            shutdown_ready = True
         
         self.main_pub.send_string(f"TELEMETRY ERROR [supervisor]: {return_message}")
         color = color_map.get(return_level, "\033[0m")

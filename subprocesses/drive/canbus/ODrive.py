@@ -107,7 +107,6 @@ class ODrive:
 
         # Attempt to arm the device
         self._set_axis_state(AXIS_STATE_CLOSED_LOOP)
-        print(f"[INFO] Arm requested for ODrive {self.node_id}")
 
     def disarm(self):
         if not self.is_armed or self._pending_disarm:
@@ -115,7 +114,6 @@ class ODrive:
         self._pending_disarm = True
         self._pending_arm = False
         self._set_axis_state(AXIS_STATE_IDLE)
-        print(f"[INFO] Disarm requested for ODrive {self.node_id}")
 
     # -------------------------
     # heartbeat and encoder listeners
@@ -248,8 +246,7 @@ class ODrive:
             is_extended_id=False
         )
         sent = self.canbus.send(msg)
-        if sent:
-            print(f"[INFO] Sent Clear_Errors to ODrive {self.node_id}")
-        else:
+        if not sent:
             print(f"[WARN] Failed to send Clear_Errors to ODrive {self.node_id}")
+        
         return sent
