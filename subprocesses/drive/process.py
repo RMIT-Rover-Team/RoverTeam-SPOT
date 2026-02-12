@@ -3,6 +3,7 @@ import argparse
 import json
 import logging
 import time
+import math
 
 from gamepad_ws.receiver import Receiver
 from gamepad_ws.server import GamepadServer
@@ -49,6 +50,23 @@ async def heartbeat_loop(interval: float):
         # Could be used for simple logging/debug
         print("HEARTBEAT")
         await asyncio.sleep(interval)
+
+def apply_control_curve(value: float, max_output: float = 50.0, steepness: float = 3.0) -> float:
+    """
+    Apply a curve to joystick input.
+    - value: joystick input [0..1]
+    - max_output: maximum speed/torque
+    - steepness: higher = steeper at start, flatter at top
+    """
+    # Clamp input just in case
+    value = max(0.0, min(1.0, value))
+
+    # Sigmoid-like curve: y = x / (x + (1-x) * exp(-k*x))
+    # simpler smoothstep variant: y = x^n / (x^n + (1-x)^n)
+    n = steepness
+    curved = (value**n) / (value**n + (1-value)**n) if value > 0 else 0.0
+
+    return curved * max_output
 
 # -------------------------
 # Gamepad Handlers
@@ -98,9 +116,9 @@ def handle_button_batch(buttons):
     if (forward > 0 and reverse > 0) or (forward == 0 and reverse == 0):
         speed = 0.0
     elif forward > 0:
-        speed = forward * max_speed
+        speed = apply_control_curve(forward, max_speed)
     else:  # reverse > 0
-        speed = -reverse * max_speed
+        speed = -apply_control_curve(reverse, max_speed)
 
     for od in odrives.values():
         # Try to re-arm if button 0 is pressed and ODrive is not armed
