@@ -9,7 +9,7 @@ class Receiver:
     async def receive(self, msg: str):
         data = json.loads(msg)
         
-        if data.get("type") == "control_active":
-            self.control_active = data.get("active", False)
+        if "control_active" in data:
+            self.control_active = data["control_active"]
         else:
             await self.callback(data)
