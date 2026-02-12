@@ -61,6 +61,8 @@ class ODrive:
         self.node_id = node_id
         self.inverted = inverted
         self.canbus = canbus
+        self._pending_arm = False
+        self._pending_disarm = False
         self.is_armed = False
 
         self.last_heartbeat_time = None
@@ -80,59 +82,50 @@ class ODrive:
         return (self.node_id << 5) | cmd
 
     # -------------------------
-    # Heartbeat listener
+    # Arm / Disarm
+    # -------------------------
+    def arm(self):
+        if self.is_armed or self._pending_arm:
+            return
+        self._pending_arm = True
+        self._pending_disarm = False
+        self._set_axis_state(AXIS_STATE_CLOSED_LOOP)
+        print(f"[INFO] Arm requested for ODrive {self.node_id}")
+
+    def disarm(self):
+        if not self.is_armed or self._pending_disarm:
+            return
+        self._pending_disarm = True
+        self._pending_arm = False
+        self._set_axis_state(AXIS_STATE_IDLE)
+        print(f"[INFO] Disarm requested for ODrive {self.node_id}")
+
+    # -------------------------
+    # heartbeat handler
     # -------------------------
     def _heartbeat_listener(self):
         while True:
+            msg = self.canbus.recv(timeout=0.1)
+            if not msg or msg.arbitration_id != self._msg_id(HEARTBEAT):
+                continue
             try:
-                msg = self.canbus.recv(timeout=0.1)
-                if msg and msg.arbitration_id == self._msg_id(HEARTBEAT):
-                    self._update_from_heartbeat(msg)
+                error, state, result, traj_done = struct.unpack("<IBBB", msg.data[:7])
             except Exception:
                 continue
 
-    def _update_from_heartbeat(self, msg: can.Message):
-        try:
-            error, state, result, traj_done = struct.unpack("<IBBB", msg.data[:7])
-        except Exception:
-            return
+            self.last_heartbeat_time = time.time()
+            self.state = state
+            self.error_code = error
+            self.error_string = ", ".join(decode_errors(error))
+            self.traj_done = traj_done
 
-        self.last_heartbeat_time = time.time()
-        self.state = state
-        self.error_code = error
-        self.error_string = ", ".join(decode_errors(error))
-        self.traj_done = traj_done
-
-    # -------------------------
-    # Arm / Disarm
-    # -------------------------
-    def arm(self, wait=True):
-        if self.is_armed:
-            return True
-
-        print(f"[INFO] Arming ODrive {self.node_id}...")
-        self._set_axis_state(AXIS_STATE_CLOSED_LOOP)
-        if wait and not self._wait_for_state(AXIS_STATE_CLOSED_LOOP):
-            print(f"[WARN] Failed to arm {self.node_id}")
-            return False
-
-        self.is_armed = True
-        print(f"[INFO] ODrive {self.node_id} armed")
-        return True
-
-    def disarm(self):
-        if not self.is_armed:
-            return True
-
-        print(f"[INFO] Disarming ODrive {self.node_id}...")
-        self._set_axis_state(AXIS_STATE_IDLE)
-        if not self._wait_for_state(AXIS_STATE_IDLE):
-            print(f"[WARN] Failed to disarm {self.node_id}")
-            return False
-
-        self.is_armed = False
-        print(f"[INFO] ODrive {self.node_id} disarmed")
-        return True
+            # Update is_armed based on actual state
+            if self.state == AXIS_STATE_CLOSED_LOOP:
+                self.is_armed = True
+                self._pending_arm = False
+            elif self.state == AXIS_STATE_IDLE:
+                self.is_armed = False
+                self._pending_disarm = False
 
     # -------------------------
     # Velocity
