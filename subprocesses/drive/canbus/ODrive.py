@@ -8,9 +8,10 @@ from .canbus import CANBus
 # -------------------------
 # ODrive CANSimple Command IDs
 # -------------------------
-HEARTBEAT       = 0x01
-SET_AXIS_STATE  = 0x07
-SET_INPUT_VEL   = 0x0d
+HEARTBEAT               = 0x01
+SET_AXIS_STATE          = 0x07
+GET_ENCODER_ESTIMATES   = 0x09
+SET_INPUT_VEL           = 0x0d
 
 AXIS_STATE_IDLE         = 1
 AXIS_STATE_CLOSED_LOOP  = 8
@@ -146,14 +147,14 @@ class ODrive:
             if not msg:
                 continue
 
-            # Encoder estimate messages have ID = (node_id << 5) | 0x02
-            if msg.arbitration_id != self._msg_id(0x02):
+            # Encoder estimate messages have ID = (node_id << 5) | 0x09
+            if msg.arbitration_id != self._msg_id(GET_ENCODER_ESTIMATES):
                 continue
 
             try:
                 # Encoder count: int32
                 # Position estimate: float32
-                pos, vel = struct.unpack("<fi", msg.data[:8])
+                pos, vel = struct.unpack("<ff", msg.data[:8])
             except Exception:
                 continue
 
