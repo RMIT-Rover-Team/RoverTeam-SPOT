@@ -54,12 +54,16 @@ async def heartbeat_loop(interval: float):
 # -------------------------
 
 async def handle_gamepad_message(msg: dict, receiver):
-    global control_active
-
     # Arm ODrives on first control message
-    if receiver.control_active and not any(od.is_armed for od in odrives.values()):
+    if receiver.control_active:
         for od in odrives.values():
-            od.arm()
+            if not od.is_armed:
+                od.arm()
+
+    if not receiver.control_active:
+        for od in odrives.values():
+            if od.is_armed:
+                od.disarm()
 
     if "buttons" in msg and "axes" in msg:
         axes = msg["axes"]

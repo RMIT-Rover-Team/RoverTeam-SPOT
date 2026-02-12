@@ -11,5 +11,5 @@ class Receiver:
         
         if "control_active" in data:
             self.control_active = data["control_active"]
-        else:
-            await self.callback(data)
+        
+        await self.callback(data)

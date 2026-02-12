@@ -12,6 +12,7 @@ HEARTBEAT       = 0x01
 SET_AXIS_STATE = 0x07
 SET_INPUT_VEL  = 0x0d
 
+AXIS_STATE_IDLE = 0
 AXIS_STATE_CLOSED_LOOP = 8
 
 # -------------------------
@@ -91,7 +92,24 @@ class ODrive:
         
         self.is_armed = True
         print(f"[INFO] ODrive {self.node_id} armed")
-        return True        
+        return True
+    
+    # Disarm the drive
+    def disarm(self):
+        if not self.is_armed:
+            return True
+
+        print(f"[INFO] Disarming ODrive {self.node_id}...")
+
+        # Put axes into IDLE
+        self._set_axis_state(AXIS_STATE_IDLE)
+        if not self._wait_for_state(AXIS_STATE_IDLE):
+            print(f"[WARN] Failed to send IDLE command to {self.node_id}")
+            return False
+
+        self.is_armed = False
+        print(f"[INFO] ODrive {self.node_id} disarmed")
+        return True
 
     # Set velocity
     def set_velocity(self, velocity: float, torque_ff: float = 0.0):
