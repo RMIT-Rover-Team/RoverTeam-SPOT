@@ -106,7 +106,7 @@ def handle_button_batch(buttons):
 
 async def telemetry_loop(interval: float, receiver):
     while True:
-        if getattr(receiver, "control_active", False):
+        if True or getattr(receiver, "control_active", False):
             data = {}
             for node_id, od in odrives.items():
                 od.listen_for_heartbeat(timeout=0.01)
