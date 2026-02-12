@@ -79,7 +79,7 @@ class Supervisor:
         self.loop = asyncio.get_event_loop()
         self.subsystems: Dict[str, Subsystem] = {}
         self._stopping = False
-        self.shutdown_ready = False
+        self.restart_ready = False
 
         # ZMQ PUB for telemetry
         self.zmq_ctx = zmq.asyncio.Context()
@@ -410,13 +410,13 @@ class Supervisor:
         return_message = "Invalid command"
         return_level = "ERROR"
 
-        if self.shutdown_ready:
+        if self.restart_ready:
             if arg_c == 3 and arg_v[2] == "y":
                 return_message = "Shutting down..."
                 self.shutdown()
             else:
                 return_message = "Canceled shutdown"
-                self.shutdown_ready = False
+                self.restart_ready = False
 
         elif arg_c <= 2:
             return_message = "No command specified"
@@ -473,10 +473,11 @@ class Supervisor:
                         return_level = "WARNING"
                         await self.launch(sub)
 
-        # shutdown
-        elif arg_v[2] == "shutdown":
-            return_message = "Are you sure you want to shutdown? [y/n]:"
-            self.shutdown_ready = True
+        # restart
+        elif arg_v[2] == "restart":
+            return_message = "WARNING: The restart command kills SPOT. It relies on systemctl to restart the process."
+            return_message += "\nAre you sure you want to restart? [y/n]:"
+            self.restart_ready = True
         
         self.main_pub.send_string(f"TELEMETRY ERROR [supervisor]: {return_message}")
         color = color_map.get(return_level, "\033[0m")
