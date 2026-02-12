@@ -128,7 +128,10 @@ async def telemetry_loop(interval: float, receiver):
                     "traj_done": od.traj_done,
                     "last_seen": od.last_heartbeat_time,
                     "connected": (od.last_heartbeat_time is not None) and
-                                 (now - od.last_heartbeat_time <= HEARTBEAT_GRACE_PERIOD)
+                                 (now - od.last_heartbeat_time <= HEARTBEAT_GRACE_PERIOD),
+                    "encoder_position": od.encoder_position,
+                    "encoder_velocity": od.encoder_velocity,
+                    "last_encoder": od.last_encoder_time,
                 }
                 for node_id, od in odrives.items()
             }

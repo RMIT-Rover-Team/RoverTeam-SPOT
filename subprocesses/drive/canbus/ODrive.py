@@ -71,9 +71,17 @@ class ODrive:
         self.error_string = "NO_ERROR"
         self.traj_done = None
 
+        self.encoder_position = 0.0
+        self.encoder_velocity = 0.0
+        self.last_encoder_time = None
+
         # Start a background heartbeat listener
         self._listener_thread = threading.Thread(target=self._heartbeat_listener, daemon=True)
         self._listener_thread.start()
+
+        # Start encoder listener thread
+        self._encoder_thread = threading.Thread(target=self._encoder_listener, daemon=True)
+        self._encoder_thread.start()
 
     # -------------------------
     # Utility
@@ -106,7 +114,7 @@ class ODrive:
         print(f"[INFO] Disarm requested for ODrive {self.node_id}")
 
     # -------------------------
-    # heartbeat handler
+    # heartbeat and encoder listeners
     # -------------------------
     def _heartbeat_listener(self):
         while True:
@@ -131,6 +139,27 @@ class ODrive:
             else:
                 self.is_armed = False
                 self._pending_disarm = False
+
+    def _encoder_listener(self):
+        while True:
+            msg = self.canbus.recv(timeout=0.01)  # encoder messages are fast
+            if not msg:
+                continue
+
+            # Encoder estimate messages have ID = (node_id << 5) | 0x02
+            if msg.arbitration_id != self._msg_id(0x02):
+                continue
+
+            try:
+                # Encoder count: int32
+                # Position estimate: float32
+                pos, vel = struct.unpack("<fi", msg.data[:8])
+            except Exception:
+                continue
+
+            self.encoder_position = pos
+            self.encoder_velocity = vel
+            self.last_encoder_time = time.time()
 
     # -------------------------
     # Velocity
