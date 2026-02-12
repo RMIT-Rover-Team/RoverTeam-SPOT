@@ -1,18 +1,23 @@
-import can
 import struct
 import time
+import can
+
+from .canbus import CANBus
 
 # -------------------------
 # ODrive CANSimple Command IDs
 # -------------------------
-HEARTBEAT      = 0x01
+
+HEARTBEAT       = 0x01
 SET_AXIS_STATE = 0x07
 SET_INPUT_VEL  = 0x0d
 
-# Axis State Values
 AXIS_STATE_CLOSED_LOOP = 8
 
+# -------------------------
 # Error codes
+# -------------------------
+
 ERR_CODES = {
     0x1: "INITIALIZING",
     0x2: "SYSTEM_LEVEL",
@@ -38,145 +43,117 @@ ERR_CODES = {
     0x40000000: "CALIBRATION_ERROR"
 }
 
-def decode_errors(error_value: int, err_codes: dict = ERR_CODES) -> list[str]:
-    e = [
-        name
-        for bit, name in err_codes.items()
+# -------------------------
+# Error decode helper
+# -------------------------
+
+def decode_errors(error_value: int) -> list[str]:
+    errors = [
+        name for bit, name in ERR_CODES.items()
         if error_value & bit
     ]
-    if len(e) < 1:
-        return ["NO_ERROR"]
-    else:
-        return e
+    return errors if errors else ["NO_ERROR"]
 
 # -------------------------
-# Create CAN bus interface
+# ODrive class
 # -------------------------
-try:
-    bus = can.interface.Bus(channel="can0", bustype="socketcan")
-except Exception as e:
-    print(f"[ERROR] Could not open CAN bus: {e}")
-    bus = None
 
-# -------------------------
-# Send CAN message utility
-# -------------------------
-def send_can(msg: can.Message, retries=3, delay=0.05) -> bool:
-    """Send a CAN message with retries and logging."""
-    if bus is None:
-        print("[ERROR] CAN bus not initialized")
-        return False
-    for attempt in range(1, retries + 1):
-        try:
-            bus.send(msg)
-            return True
-        except can.CanError as e:
-            print(f"[WARN] CAN send attempt {attempt} failed: {e}")
-            time.sleep(delay)
-    print("[ERROR] CAN message failed after retries")
-    return False
+class ODrive:
+    def __init__(self, node_id: int, canbus: CANBus):
+        self.node_id = node_id
+        self.canbus = canbus
+        self.is_armed = False
 
-# -------------------------
-# Wait for Heartbeat
-# -------------------------
-def wait_for_heartbeat(node_id: int, timeout=2.0) -> bool:
-    """
-    Wait for a heartbeat from the given node.
-    Returns True if a heartbeat arrives before timeout.
-    """
-    if bus is None:
-        return False
+    def _msg_id(self, cmd):
+        return (self.node_id << 5) | cmd
 
-    target_id = (node_id << 5) | HEARTBEAT
-    start = time.time()
-    while time.time() - start < timeout:
-        msg = bus.recv(timeout=0.1)
-        if msg and msg.arbitration_id == target_id:
-            # msg.data contains: error (uint32), state (uint8), result (uint8), traj_done (uint8)
+    # -------------------------
+    # Wait for Heartbeat
+    # -------------------------
+
+    def wait_for_heartbeat(self, timeout=2.0) -> bool:
+        start = time.time()
+
+        while time.time() - start < timeout:
+            msg = self.canbus.recv(timeout=0.1)
+            if not msg:
+                continue
+
+            if msg.arbitration_id != self._msg_id(HEARTBEAT):
+                continue
+
             try:
                 error, state, result, traj_done = struct.unpack("<IBBB", msg.data[:7])
-                errorString = ", ".join(decode_errors(error))
-                print(f"[INFO] Heartbeat from {node_id}: state={state}, error={error} [{errorString}]")
+                error_string = ", ".join(decode_errors(error))
+                print(
+                    f"[INFO] Heartbeat from {self.node_id}: "
+                    f"state={state}, error={error} [{error_string}]"
+                )
+                return True
             except Exception:
-                print(f"[WARN] Heartbeat format unexpected on node {node_id}")
-            return True
-    print(f"[WARN] No heartbeat received from ODrive {node_id}")
-    return False
+                print(f"[WARN] Heartbeat format unexpected on node {self.node_id}")
+                return False
 
-# -------------------------
-# Startup Sequence
-# -------------------------
-def startup(node_id: int, wait=True):
-    """
-    Signal ODrive to exit auto-baud scan and enter CLOSED_LOOP_CONTROL.
-    If `wait` is True, the function waits for confirmation via heartbeat.
-    """
-    if bus is None:
-        print("[ERROR] CAN bus not available")
+        print(f"[WARN] No heartbeat received from ODrive {self.node_id}")
         return False
 
-    print(f"[INFO] Starting ODrive {node_id}...")
+    # -------------------------
+    # Arm the drive
+    # -------------------------
 
-    # Send a few quick heartbeat-like messages so the ODrive exits auto-baud scan. :contentReference[oaicite:2]{index=2}
-    beacon_id = (node_id << 5) | HEARTBEAT
-    beacon_msg = can.Message(arbitration_id=beacon_id, data=b"", is_extended_id=False)
-    for _ in range(5):
-        send_can(beacon_msg)
-        time.sleep(0.05)
+    def arm(self, wait=True):
+        if self.is_armed:
+            return True   # already running — do nothing
 
-    # Request axis enter CLOSED_LOOP_CONTROL
-    payload = struct.pack("<I", AXIS_STATE_CLOSED_LOOP)
-    cmd_id = (node_id << 5) | SET_AXIS_STATE
-    state_msg = can.Message(arbitration_id=cmd_id, data=payload, is_extended_id=False)
-    send_can(state_msg)
+        print(f"[INFO] Arming ODrive {self.node_id}...")
 
-    print(f"[INFO] Sent CLOSED_LOOP_CONTROL to ODrive {node_id}")
+        beacon_msg = can.Message(
+            arbitration_id=self._msg_id(HEARTBEAT),
+            data=b"",
+            is_extended_id=False
+        )
 
-    if wait:
-        # Wait for confirmation via heartbeat state update
-        # Heartbeat state == 8 means closed-loop. :contentReference[oaicite:3]{index=3}
+        for _ in range(5):
+            self.canbus.send(beacon_msg)
+            time.sleep(0.05)
+
+        payload = struct.pack("<I", AXIS_STATE_CLOSED_LOOP)
+
+        state_msg = can.Message(
+            arbitration_id=self._msg_id(SET_AXIS_STATE),
+            data=payload,
+            is_extended_id=False
+        )
+
+        self.canbus.send(state_msg)
+
+        # confirm via heartbeat
         start = time.time()
         while time.time() - start < 3.0:
-            if wait_for_heartbeat(node_id, timeout=0.3):
+            if self.wait_for_heartbeat(timeout=0.3):
+                self.is_armed = True
+                print(f"[INFO] ODrive {self.node_id} armed")
                 return True
-        print(f"[WARN] ODrive {node_id} did not confirm CLOSED_LOOP_CONTROL")
+
+        print(f"[WARN] ODrive {self.node_id} failed to arm")
         return False
 
-    return True
+    # -------------------------
+    # Velocity command
+    # -------------------------
 
-# -------------------------
-# Set Velocity (Closed Loop)
-# -------------------------
-def set_velocity(node_id: int, velocity: float, torque_feedforward: float = 0.0):
-    """
-    Sends a Set_Input_Vel command (velocity + optional torque feedforward). 
-    velocity: target in turns/sec
-    torque_feedforward: typically 0.0 for velocity control
-    """
-    if bus is None:
-        print("[ERROR] CAN bus not available")
+    def set_velocity(self, velocity: float, torque_ff: float = 0.0):
+        payload = struct.pack("<ff", velocity, torque_ff)
+
+        vel_msg = can.Message(
+            arbitration_id=self._msg_id(SET_INPUT_VEL),
+            data=payload,
+            is_extended_id=False
+        )
+
+        if self.canbus.send(vel_msg):
+            print(f"[INFO] Velocity {velocity:.3f} sent to {self.node_id}")
+            return True
+
+        print(f"[ERROR] Failed to send velocity to {self.node_id}")
         return False
-
-    # ODrive expects two floats: velocity first, then torque feedforward
-    payload = struct.pack("<ff", velocity, torque_feedforward)
-    msg_id = (node_id << 5) | SET_INPUT_VEL
-    vel_msg = can.Message(arbitration_id=msg_id, data=payload, is_extended_id=False)
-
-    success = send_can(vel_msg)
-    if success:
-        print(f"[INFO] Velocity {velocity:.3f} cmd sent to ODrive {node_id}")
-    else:
-        print(f"[ERROR] Failed to send velocity cmd to {node_id}")
-    return success
-
-# -------------------------
-# Example
-# -------------------------
-if __name__ == "__main__":
-    if startup(0):
-        time.sleep(0.1)
-        set_velocity(0, 1.0)
-        time.sleep(2.0)
-        set_velocity(0, 0.0)
-    else:
-        print("[ERROR] Startup failed for node 0")
