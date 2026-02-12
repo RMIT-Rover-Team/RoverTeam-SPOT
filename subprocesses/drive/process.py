@@ -19,7 +19,6 @@ class JsonHandler(logging.StreamHandler):
         log_obj = {"level": record.levelname, "msg": record.getMessage()}
         print(json.dumps(log_obj), flush=True)
 
-
 logger = logging.getLogger()
 logger.setLevel(logging.DEBUG)
 logger.addHandler(JsonHandler())
@@ -31,12 +30,13 @@ logger.addHandler(JsonHandler())
 bus = CANBus("can0")
 
 odrives = {
-    1: ODrive(1, bus, inverted = True),
+    1: ODrive(1, bus, inverted=True),
     2: ODrive(2, bus),
-    3: ODrive(3, bus, inverted = True),
+    3: ODrive(3, bus, inverted=True),
     4: ODrive(4, bus),
 }
 
+# Control state
 control_active = False
 
 # -------------------------
@@ -45,6 +45,7 @@ control_active = False
 
 async def heartbeat_loop(interval: float):
     while True:
+        # Could be used for simple logging/debug
         print("HEARTBEAT")
         await asyncio.sleep(interval)
 
@@ -52,19 +53,17 @@ async def heartbeat_loop(interval: float):
 # Gamepad Handlers
 # -------------------------
 
-async def handle_gamepad_message(msg: dict):
+async def handle_gamepad_message(msg: dict, receiver):
     global control_active
 
     # Arm ODrives on first control message
-    if not control_active:
-        logger.info("Controller active — arming ODrives")
+    if receiver.control_active and not any(od.is_armed for od in odrives.values()):
         for od in odrives.values():
             od.arm()
-        control_active = True
 
     if "buttons" in msg and "axes" in msg:
-        buttons = msg["buttons"]
         axes = msg["axes"]
+        buttons = msg["buttons"]
 
         for i, value in enumerate(axes):
             handle_axis({"id": i, "value": value})
@@ -72,7 +71,6 @@ async def handle_gamepad_message(msg: dict):
         handle_button_batch(buttons)
     else:
         logger.warning("unknown gamepad message: %s", msg)
-
 
 def handle_axis(data):
     axis_id = data["id"]
@@ -86,10 +84,9 @@ def handle_button_batch(buttons):
     max_speed = 50
     deadzone = 0.05
 
-    if forward < deadzone:
-        forward = 0.0
-    if reverse < deadzone:
-        reverse = 0.0
+    # Apply deadzone
+    forward = forward if forward > deadzone else 0.0
+    reverse = reverse if reverse > deadzone else 0.0
 
     # SAFETY: both pressed or neither pressed → stop
     if (forward > 0 and reverse > 0) or (forward == 0 and reverse == 0):
@@ -99,49 +96,45 @@ def handle_button_batch(buttons):
     else:  # reverse > 0
         speed = -reverse * max_speed
 
-    # Drivetrain inversion
-    odrives[1].set_velocity(speed)
-    odrives[2].set_velocity(speed)
-    odrives[3].set_velocity(speed)
-    odrives[4].set_velocity(speed)
-
+    # Drivetrain inversion handled in ODrive class
+    for od in odrives.values():
+        od.set_velocity(speed)
 
 # -------------------------
-# Telemetry loop (feedback from ODrives)
-# ------------------------
+# Telemetry loop
+# -------------------------
 
-async def telemetry_loop(interval: float = 1.0):
+async def telemetry_loop(interval: float, receiver):
     while True:
-        data = {}
-        for node_id, od in odrives.items():
-            # call heartbeat listener
-            od.listen_for_heartbeat(timeout=0.01)
+        if getattr(receiver, "control_active", False):
+            data = {}
+            for node_id, od in odrives.items():
+                od.listen_for_heartbeat(timeout=0.01)
 
-            data[node_id] = {
-                "state": od.state,
-                "error_code": od.error_code,
-                "error_string": od.error_string,
-                "traj_done": od.traj_done,
-                "last_seen": od.last_heartbeat_time
-            }
+                data[node_id] = {
+                    "state": od.state,
+                    "error_code": od.error_code,
+                    "error_string": od.error_string,
+                    "traj_done": od.traj_done,
+                    "last_seen": od.last_heartbeat_time
+                }
 
-        print(json.dumps({"type": "drive", "data": data}))
+            print(json.dumps({"type": "drive", "data": data}))
         await asyncio.sleep(interval)
-
 
 # -------------------------
 # MAIN
 # -------------------------
 
 async def main(heartbeat_interval: float, status_int: float, ws_host: str, ws_port: int):
-    receiver = Receiver(handle_gamepad_message)
+    receiver = Receiver(lambda msg: handle_gamepad_message(msg, receiver))
     gamepad_server = GamepadServer(ws_host, ws_port, receiver)
 
     await gamepad_server.start()
 
     tasks = [
         asyncio.create_task(heartbeat_loop(heartbeat_interval)),
-        asyncio.create_task(telemetry_loop(status_int))
+        asyncio.create_task(telemetry_loop(status_int, receiver))
     ]
 
     try:
