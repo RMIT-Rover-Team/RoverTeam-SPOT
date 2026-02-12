@@ -473,9 +473,9 @@ class Supervisor:
                         return_level = "WARNING"
                         await self.launch(sub)
 
-        # restart
-        elif arg_v[2] == "restart":
-            return_message = "WARNING: The restart command kills SPOT. It relies on systemctl to restart the process."
+        # restart-all
+        elif arg_v[2] == "restart-all":
+            return_message = "WARNING: The restart-all command kills SPOT. It relies on systemctl to restart the process."
             return_message += "\nAre you sure you want to restart? [y/n]:"
             self.restart_ready = True
         
