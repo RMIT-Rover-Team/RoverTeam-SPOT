@@ -48,8 +48,6 @@ handler.setFormatter(AnsiFormatter())
 log.addHandler(handler)
 log.setLevel(SHOW_DEBUG and logging.DEBUG or logging.INFO)
 
-shutdown_ready = False
-
 color_map = {
     "DEBUG": "\033[90m",
     "INFO": "\033[0m",
@@ -81,6 +79,7 @@ class Supervisor:
         self.loop = asyncio.get_event_loop()
         self.subsystems: Dict[str, Subsystem] = {}
         self._stopping = False
+        self.shutdown_ready = False
 
         # ZMQ PUB for telemetry
         self.zmq_ctx = zmq.asyncio.Context()
@@ -411,13 +410,13 @@ class Supervisor:
         return_message = "Invalid command"
         return_level = "ERROR"
 
-        if shutdown_ready:
+        if self.shutdown_ready:
             if arg_c == 3 and arg_v[2] == "y":
                 return_message = "Shutting down..."
                 self.shutdown()
             else:
                 return_message = "Canceled shutdown"
-                shutdown_ready = False
+                self.shutdown_ready = False
 
         elif arg_c <= 2:
             return_message = "No command specified"
@@ -477,7 +476,7 @@ class Supervisor:
         # shutdown
         elif arg_v[2] == "shutdown":
             return_message = "Are you sure you want to shutdown? [y/n]:"
-            shutdown_ready = True
+            self.shutdown_ready = True
         
         self.main_pub.send_string(f"TELEMETRY ERROR [supervisor]: {return_message}")
         color = color_map.get(return_level, "\033[0m")
