@@ -64,6 +64,7 @@ class ODrive:
         self.inverted = inverted
         self.canbus = canbus
         self.ws_send = ws_send
+        self._loop = asyncio.get_running_loop()
 
         self._pending_arm = False
         self._pending_disarm = False
@@ -121,7 +122,6 @@ class ODrive:
     # heartbeat and encoder listeners
     # -------------------------
     def _send_ws(self):
-        """Send current telemetry over websocket if available."""
         if self.ws_send:
             now = time.time()
             data = {
@@ -139,7 +139,7 @@ class ODrive:
                 "type": "drive",
                 "node_id": self.node_id,
                 "data": data
-            }), asyncio.get_running_loop())
+            }), self._loop)
 
     def _heartbeat_listener(self):
         while True:
