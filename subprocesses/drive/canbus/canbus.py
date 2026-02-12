@@ -1,5 +1,6 @@
 import can
 import time
+import subprocess
 
 # -------------------------
 # Create CAN bus interface
@@ -8,6 +9,10 @@ import time
 class CANBus:
     def __init__(self, channel="can0", bustype="socketcan"):
         try:
+            # Just incase we try to load it up
+            subprocess.run(["sudo", "ip", "link", "set", "can0", "down"])
+            subprocess.run(["sudo", "ip", "link", "set", "can0", "up", "type", "can", "bitrate", "125000"])
+
             self.bus = can.interface.Bus(
                 channel=channel,
                 bustype=bustype
