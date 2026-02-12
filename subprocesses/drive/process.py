@@ -92,57 +92,38 @@ async def handle_gamepad_message(msg: dict, receiver):
     else:
         logger.warning("unknown gamepad message: %s", msg)
 
-def handle_button_batch(buttons, axes):
-    forward = buttons[7] if len(buttons) > 7 else 0.0
-    reverse = buttons[6] if len(buttons) > 6 else 0.0
-    rearm_button = buttons[0] if len(buttons) > 0 else 0.0
-    steer_input = axes[2] if len(axes) > 2 else 0.0  # left stick horizontal
-
+def handle_steering_axes(axes, rearm_button=0):
+    """
+    Control mode: stick-only steering
+    - axes[2] = X (left/right)
+    - axes[3] = Y (forward/back)
+    Left/right motor speeds calculated via 45° rotated polar coords.
+    """
     max_speed = 50
-    deadzone = 0.05
+    DEADZONE = 0.05
+
+    x = axes[2] if len(axes) > 2 else 0.0
+    y = axes[3] if len(axes) > 3 else 0.0
 
     # Apply deadzone
-    forward = forward if forward > deadzone else 0.0
-    reverse = reverse if reverse > deadzone else 0.0
-    steer_input = 0.0 if abs(steer_input) < deadzone else steer_input
+    x = 0.0 if abs(x) < DEADZONE else x
+    y = 0.0 if abs(y) < DEADZONE else y
 
-    # Determine if on-the-spot rotation
-    on_spot = forward > 0 and reverse > 0
+    # Rotate by 45°
+    cos45 = math.cos(math.pi / 4)
+    sin45 = math.sin(math.pi / 4)
 
-    # Apply control curve for throttle
-    throttle = 0.0
-    if on_spot:
-        throttle = 0.0  # no forward movement, just rotate
-    elif forward > 0:
-        throttle = apply_control_curve(forward, max_speed)
-    elif reverse > 0:
-        throttle = -apply_control_curve(reverse, max_speed)
+    left_speed = (y * cos45 + x * sin45) * max_speed
+    right_speed = (y * cos45 - x * sin45) * max_speed
 
-    # Flip steering for forward and on-spot
-    if forward > 0 or on_spot:
-        steer = -apply_control_curve(abs(steer_input), max_output=max_speed) * (1 if steer_input > 0 else -1)
-    else:
-        # reverse: keep original
-        steer = apply_control_curve(abs(steer_input), max_output=max_speed) * (1 if steer_input > 0 else -1)
-
-    # Compute left/right motor speeds
-    if on_spot:
-        left_speed = -steer
-        right_speed = steer
-    else:
-        left_speed = throttle - steer
-        right_speed = throttle + steer
-
-        # Clamp speeds
-        left_speed = max(-max_speed, min(max_speed, left_speed))
-        right_speed = max(-max_speed, min(max_speed, right_speed))
+    # Optional: clamp speeds
+    left_speed = max(-max_speed, min(max_speed, left_speed))
+    right_speed = max(-max_speed, min(max_speed, right_speed))
 
     # Apply to motors
     for od in odrives.values():
-        # Re-arm if necessary
         if rearm_button > 0 and not od.is_armed:
             od.arm()
-
         if od.is_armed:
             if od.node_id in (1, 2):
                 od.set_velocity(left_speed)
