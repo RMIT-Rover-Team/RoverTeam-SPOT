@@ -64,6 +64,7 @@ class GamepadServer:
                     log.warning("Gamepad WS error: %s", ws.exception())
 
         finally:
+            self._receiver.receive("{'control_active':False}")
             self._clients.discard(ws)
             log.info("Gamepad WS client disconnected: %s", request.remote)
 
