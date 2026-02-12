@@ -12,7 +12,7 @@ HEARTBEAT       = 0x01
 SET_AXIS_STATE  = 0x07
 SET_INPUT_VEL   = 0x0d
 
-AXIS_STATE_IDLE         = 0
+AXIS_STATE_IDLE         = 1
 AXIS_STATE_CLOSED_LOOP  = 8
 
 # -------------------------
