@@ -118,8 +118,12 @@ def handle_button_batch(buttons, axes):
     elif reverse > 0:
         throttle = -apply_control_curve(reverse, max_speed)
 
-    # Apply control curve to steering
-    steer = apply_control_curve(abs(steer_input), max_output=max_speed) * (1 if steer_input > 0 else -1)
+    # Flip steering for forward and on-spot
+    if forward > 0 or on_spot:
+        steer = -apply_control_curve(abs(steer_input), max_output=max_speed) * (1 if steer_input > 0 else -1)
+    else:
+        # reverse: keep original
+        steer = apply_control_curve(abs(steer_input), max_output=max_speed) * (1 if steer_input > 0 else -1)
 
     # Compute left/right motor speeds
     if on_spot:
