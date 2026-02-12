@@ -94,7 +94,7 @@ async def handle_gamepad_message(msg: dict, receiver):
 
 def handle_button_batch(buttons, axes):
     rearm_button = buttons[0] if len(buttons) > 0 else 0.0
-    max_speed = 50
+    max_speed = 200
     DEADZONE = 0.05
 
     x = axes[2] if len(axes) > 2 else 0.0
@@ -102,7 +102,7 @@ def handle_button_batch(buttons, axes):
 
     # Apply deadzone
     x = 0.0 if abs(x) < DEADZONE else x
-    y = 0.0 if abs(y) < DEADZONE else y
+    y = 0.0 if abs(y) < DEADZONE else -y
 
     # Rotate by 45°
     cos45 = math.cos(math.pi / 4)
