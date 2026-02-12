@@ -123,7 +123,7 @@ class ODrive:
             if self.state == AXIS_STATE_CLOSED_LOOP:
                 self.is_armed = True
                 self._pending_arm = False
-            elif self.state == AXIS_STATE_IDLE:
+            else:
                 self.is_armed = False
                 self._pending_disarm = False
 

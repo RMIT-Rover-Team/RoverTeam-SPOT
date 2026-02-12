@@ -2,6 +2,7 @@ import asyncio
 import argparse
 import json
 import logging
+import time
 
 from gamepad_ws.receiver import Receiver
 from gamepad_ws.server import GamepadServer
@@ -55,17 +56,17 @@ async def heartbeat_loop(interval: float):
 
 async def handle_gamepad_message(msg: dict, receiver):
     # Arm ODrives on first control message
-    if receiver.control_active:
-        for od in odrives.values():
-            if not od.is_armed:
-                od.arm()
+    if "control_active" in msg:
+        if receiver.control_active:
+            for od in odrives.values():
+                if not od.is_armed:
+                    od.arm()
 
-    if not receiver.control_active:
-        for od in odrives.values():
-            if od.is_armed:
-                od.disarm()
-
-    if "buttons" in msg and "axes" in msg:
+        if not receiver.control_active:
+            for od in odrives.values():
+                if od.is_armed:
+                    od.disarm()
+    elif "buttons" in msg and "axes" in msg:
         axes = msg["axes"]
         buttons = msg["buttons"]
 
@@ -111,13 +112,16 @@ async def telemetry_loop(interval: float, receiver):
     while True:
         if True or getattr(receiver, "control_active", False):
             # Collect drive status directly from each ODrive object
+            now = time.time()
             data = {
                 node_id: {
                     "state": od.state,
                     "error_code": od.error_code,
                     "error_string": od.error_string,
                     "traj_done": od.traj_done,
-                    "last_seen": od.last_heartbeat_time
+                    "last_seen": od.last_heartbeat_time,
+                    "connected": (od.last_heartbeat_time is not None) and
+                                 (now - od.last_heartbeat_time <= interval)
                 }
                 for node_id, od in odrives.items()
             }
