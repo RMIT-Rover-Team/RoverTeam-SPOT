@@ -85,6 +85,7 @@ def handle_axis(data):
 def handle_button_batch(buttons):
     forward = buttons[7] if len(buttons) > 7 else 0.0
     reverse = buttons[6] if len(buttons) > 6 else 0.0
+    rearm_button = buttons[0] if len(buttons) > 0 else 0.0
 
     max_speed = 50
     deadzone = 0.05
@@ -101,8 +102,12 @@ def handle_button_batch(buttons):
     else:  # reverse > 0
         speed = -reverse * max_speed
 
-    # Drivetrain inversion handled in ODrive class
     for od in odrives.values():
+        # Try to re-arm if button 0 is pressed and ODrive is not armed
+        if rearm_button > 0 and not od.is_armed:
+            od.arm()
+        
+        # Set velocity only if armed
         if od.is_armed:
             od.set_velocity(speed)
 

@@ -89,6 +89,11 @@ class ODrive:
             return
         self._pending_arm = True
         self._pending_disarm = False
+
+        # First clear any active errors
+        self.clear_errors(identify=0)
+
+        # Attempt to arm the device
         self._set_axis_state(AXIS_STATE_CLOSED_LOOP)
         print(f"[INFO] Arm requested for ODrive {self.node_id}")
 
@@ -167,3 +172,24 @@ class ODrive:
                 return True
             time.sleep(0.01)
         return False
+    
+    # -------------------------
+    # Clear Errors
+    # -------------------------
+    def clear_errors(self, identify: int = 0) -> bool:
+        """
+        Sends the ODrive Clear_Errors command over CAN.
+        `identify`: If nonzero, the ODrive may blink an LED after errors are cleared.
+        """
+        payload = struct.pack("<B", identify)
+        msg = can.Message(
+            arbitration_id=self._msg_id(0x18),  # Clear_Errors cmd
+            data=payload,
+            is_extended_id=False
+        )
+        sent = self.canbus.send(msg)
+        if sent:
+            print(f"[INFO] Sent Clear_Errors to ODrive {self.node_id}")
+        else:
+            print(f"[WARN] Failed to send Clear_Errors to ODrive {self.node_id}")
+        return sent
