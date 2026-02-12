@@ -59,12 +59,12 @@ class GamepadServer:
         def ws_send_threadsafe(obj):
             if ws.closed:
                 return
-            asyncio.run_coroutine_threadsafe(ws.send_str(json.dumps(obj)), loop)
+            coro = ws.send_str(json.dumps(obj))
+            asyncio.run_coroutine_threadsafe(coro, loop)
 
         # ✅ Call the setter instead of assigning directly
         for od in self._odrives.values():
             od.set_ws_send(ws_send_threadsafe)  # <-- this actually invokes your setter
-            od._loop = loop  # optional
 
         try:
             async for msg in ws:
