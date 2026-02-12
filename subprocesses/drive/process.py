@@ -109,7 +109,7 @@ async def telemetry_loop(interval: float, receiver):
         if True or getattr(receiver, "control_active", False):
             data = {}
             for node_id, od in odrives.items():
-                od.listen_for_heartbeat(timeout=0.01)
+                od.listen_for_heartbeat(timeout=(interval * 0.5) / max(1, len(odrives)))
 
                 data[node_id] = {
                     "state": od.state,
