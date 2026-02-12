@@ -92,13 +92,8 @@ async def handle_gamepad_message(msg: dict, receiver):
     else:
         logger.warning("unknown gamepad message: %s", msg)
 
-def handle_steering_axes(axes, rearm_button=0):
-    """
-    Control mode: stick-only steering
-    - axes[2] = X (left/right)
-    - axes[3] = Y (forward/back)
-    Left/right motor speeds calculated via 45° rotated polar coords.
-    """
+def handle_button_batch(buttons, axes):
+    rearm_button = buttons[0] if len(buttons) > 0 else 0.0
     max_speed = 50
     DEADZONE = 0.05
 
