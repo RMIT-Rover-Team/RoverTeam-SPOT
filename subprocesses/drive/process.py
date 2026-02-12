@@ -107,23 +107,24 @@ def handle_button_batch(buttons):
 # -------------------------
 # Telemetry loop
 # -------------------------
-
 async def telemetry_loop(interval: float, receiver):
     while True:
         if True or getattr(receiver, "control_active", False):
-            data = {}
-            for node_id, od in odrives.items():
-                od.listen_for_heartbeat(timeout=(interval * 0.5) / max(1, len(odrives)))
-
-                data[node_id] = {
+            # Collect drive status directly from each ODrive object
+            data = {
+                node_id: {
                     "state": od.state,
                     "error_code": od.error_code,
                     "error_string": od.error_string,
                     "traj_done": od.traj_done,
                     "last_seen": od.last_heartbeat_time
                 }
+                for node_id, od in odrives.items()
+            }
 
-            print(f"JSON {json.dumps({"type": "drive", "data": data})}")
+            # Send/print JSON telemetry
+            print(f"JSON {json.dumps({'type': 'drive', 'data': data})}")
+
         await asyncio.sleep(interval)
 
 # -------------------------
