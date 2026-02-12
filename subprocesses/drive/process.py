@@ -117,7 +117,8 @@ def handle_button_batch(buttons):
 async def telemetry_loop(interval: float, receiver):
     HEARTBEAT_GRACE_PERIOD = interval * 3 # can skip 3 heartbeats
     while True:
-        if True or getattr(receiver, "control_active", False):
+        any_ws_connected = any(getattr(od, "ws_send", None) is not None for od in odrives.values())
+        if not any_ws_connected:
             # Collect drive status directly from each ODrive object
             now = time.time()
             data = {
@@ -147,10 +148,12 @@ async def telemetry_loop(interval: float, receiver):
 
 async def main(heartbeat_interval: float, status_int: float, ws_host: str, ws_port: int):
     receiver = Receiver(lambda msg: handle_gamepad_message(msg, receiver))
-    gamepad_server = GamepadServer(ws_host, ws_port, receiver)
+    gamepad_server = GamepadServer(ws_host, ws_port, receiver, odrives)
 
+    # Start server
     await gamepad_server.start()
 
+    # Only keep heartbeat and slow telemetry as fallback
     tasks = [
         asyncio.create_task(heartbeat_loop(heartbeat_interval)),
         asyncio.create_task(telemetry_loop(status_int, receiver))

@@ -1,5 +1,6 @@
 import logging
 from typing import Optional, Set
+import json
 
 from aiohttp import web, WSMsgType
 from .receiver import Receiver
@@ -21,6 +22,7 @@ class GamepadServer:
         host: str,
         port: int,
         receiver: Receiver,
+        odrives,
         service_name: str = "drive",
         *,
         cors_middleware: Optional[list] = None,  # optional middleware list
@@ -28,6 +30,7 @@ class GamepadServer:
         self._host = host
         self._port = port
         self._receiver = receiver
+        self._odrives = odrives
         self._service_name = service_name
 
         # aiohttp app + runner
@@ -44,26 +47,34 @@ class GamepadServer:
     # Handlers
     # ---------------------------------------------------------
     async def _websocket_handler(self, request: web.Request):
-        """
-        Handles WS upgrade on /ws.
-        Receives text messages and forwards them to the Receiver.
-        """
         ws = web.WebSocketResponse()
         await ws.prepare(request)
 
         self._clients.add(ws)
         log.info("Gamepad WS client connected: %s", request.remote)
 
+        # Inject ws_send callback into all ODrives
+        async def ws_send(obj):
+            try:
+                await ws.send_str(json.dumps(obj))
+            except Exception:
+                pass
+
+        for od in self._odrives.values():
+            od.ws_send = ws_send
+
         try:
             async for msg in ws:
                 if msg.type == WSMsgType.TEXT:
-                    # Forward to your Receiver instance.
                     await self._receiver.receive(msg.data)
-
                 elif msg.type == WSMsgType.ERROR:
                     log.warning("Gamepad WS error: %s", ws.exception())
-
         finally:
+            # Cleanup ws_send
+            for od in self._receiver.odrives.values():
+                if od.ws_send == ws.send_str:
+                    od.ws_send = None
+
             await self._receiver.receive("{'control_active':False}")
             self._clients.discard(ws)
             log.info("Gamepad WS client disconnected: %s", request.remote)

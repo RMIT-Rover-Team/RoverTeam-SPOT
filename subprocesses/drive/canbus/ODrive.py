@@ -1,6 +1,7 @@
 import struct
 import time
 import threading
+import asyncio
 import can
 
 from .canbus import CANBus
@@ -58,10 +59,12 @@ def decode_errors(error_value: int) -> list[str]:
 # ODrive class
 # -------------------------
 class ODrive:
-    def __init__(self, node_id: int, canbus: CANBus, inverted: bool = False):
+    def __init__(self, node_id: int, canbus: CANBus, inverted: bool = False, ws_send=None):
         self.node_id = node_id
         self.inverted = inverted
         self.canbus = canbus
+        self.ws_send = ws_send
+
         self._pending_arm = False
         self._pending_disarm = False
         self.is_armed = False
@@ -117,6 +120,27 @@ class ODrive:
     # -------------------------
     # heartbeat and encoder listeners
     # -------------------------
+    def _send_ws(self):
+        """Send current telemetry over websocket if available."""
+        if self.ws_send:
+            now = time.time()
+            data = {
+                "state": self.state,
+                "error_code": self.error_code,
+                "error_string": self.error_string,
+                "traj_done": self.traj_done,
+                "last_seen": self.last_heartbeat_time,
+                "connected": self.last_heartbeat_time is not None,
+                "encoder_position": self.encoder_position,
+                "encoder_velocity": self.encoder_velocity,
+                "last_encoder": self.last_encoder_time,
+            }
+            asyncio.run_coroutine_threadsafe(self.ws_send({
+                "type": "drive",
+                "node_id": self.node_id,
+                "data": data
+            }), asyncio.get_running_loop())
+
     def _heartbeat_listener(self):
         while True:
             msg = self.canbus.recv(timeout=0.1)
@@ -141,6 +165,8 @@ class ODrive:
                 self.is_armed = False
                 self._pending_disarm = False
 
+            self._send_ws()
+
     def _encoder_listener(self):
         while True:
             msg = self.canbus.recv(timeout=0.01)  # encoder messages are fast
@@ -161,6 +187,8 @@ class ODrive:
             self.encoder_position = pos
             self.encoder_velocity = vel
             self.last_encoder_time = time.time()
+
+            self._send_ws()
 
     # -------------------------
     # Velocity
