@@ -12,6 +12,43 @@ SET_INPUT_VEL  = 0x0d
 # Axis State Values
 AXIS_STATE_CLOSED_LOOP = 8
 
+# Error codes
+ERR_CODES = {
+    0x1: "INITIALIZING",
+    0x2: "SYSTEM_LEVEL",
+    0x4: "TIMING_ERROR",
+    0x8: "MISSING_ESTIMATE",
+    0x10: "BAD_CONFIG",
+    0x20: "DRV_FAULT",
+    0x40: "MISSING_INPUT",
+    0x100: "DC_BUS_OVER_VOLTAGE",
+    0x200: "DC_BUS_UNDER_VOLTAGE",
+    0x400: "DC_BUS_OVER_CURRENT",
+    0x800: "DC_BUS_OVER_REGEN_CURRENT",
+    0x1000: "CURRENT_LIMIT_VIOLATION",
+    0x2000: "MOTOR_OVER_TEMP",
+    0x4000: "INVERTER_OVER_TEMP",
+    0x8000: "VELOCITY_LIMIT_VIOLATION",
+    0x10000: "POSITION_LIMIT_VIOLATION",
+    0x1000000: "WATCHDOG_TIMER_EXPIRED",
+    0x2000000: "ESTOP_REQUESTED",
+    0x4000000: "SPINOUT_DETECTED",
+    0x8000000: "BRAKE_RESISTOR_DISARMED",
+    0x10000000: "THERMISTOR_DISCONNECTED",
+    0x40000000: "CALIBRATION_ERROR"
+}
+
+def decode_errors(error_value: int, err_codes: dict = ERR_CODES) -> list[str]:
+    e = [
+        name
+        for bit, name in err_codes.items()
+        if error_value & bit
+    ]
+    if len(e) < 1:
+        return ["NO_ERROR"]
+    else:
+        return e
+
 # -------------------------
 # Create CAN bus interface
 # -------------------------
@@ -58,7 +95,8 @@ def wait_for_heartbeat(node_id: int, timeout=2.0) -> bool:
             # msg.data contains: error (uint32), state (uint8), result (uint8), traj_done (uint8)
             try:
                 error, state, result, traj_done = struct.unpack("<IBBB", msg.data[:7])
-                print(f"[INFO] Heartbeat from {node_id}: state={state}, error={error}")
+                errorString = ", ".join(decode_errors(error))
+                print(f"[INFO] Heartbeat from {node_id}: state={state}, error={errorString}")
             except Exception:
                 print(f"[WARN] Heartbeat format unexpected on node {node_id}")
             return True
