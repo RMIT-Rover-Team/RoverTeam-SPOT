@@ -142,10 +142,10 @@ class ODrive:
         )
 
         if self.canbus.send(msg):
-            print(f"[INFO] Velocity {velocity:.3f} sent to {self.node_id}")
+            #print(f"[INFO] Velocity {velocity:.3f} sent to {self.node_id}")
             return True
 
-        print(f"[ERROR] Failed to send velocity to {self.node_id}")
+        #print(f"[ERROR] Failed to send velocity to {self.node_id}")
         return False
 
     # -------------------------

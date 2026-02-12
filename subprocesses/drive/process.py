@@ -103,12 +103,14 @@ def handle_button_batch(buttons):
 
     # Drivetrain inversion handled in ODrive class
     for od in odrives.values():
-        od.set_velocity(speed)
+        if od.is_armed:
+            od.set_velocity(speed)
 
 # -------------------------
 # Telemetry loop
 # -------------------------
 async def telemetry_loop(interval: float, receiver):
+    HEARTBEAT_GRACE_PERIOD = interval * 3 # can skip 3 heartbeats
     while True:
         if True or getattr(receiver, "control_active", False):
             # Collect drive status directly from each ODrive object
@@ -121,7 +123,7 @@ async def telemetry_loop(interval: float, receiver):
                     "traj_done": od.traj_done,
                     "last_seen": od.last_heartbeat_time,
                     "connected": (od.last_heartbeat_time is not None) and
-                                 (now - od.last_heartbeat_time <= interval)
+                                 (now - od.last_heartbeat_time <= HEARTBEAT_GRACE_PERIOD)
                 }
                 for node_id, od in odrives.items()
             }
