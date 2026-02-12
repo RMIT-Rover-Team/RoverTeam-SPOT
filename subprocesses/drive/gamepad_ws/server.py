@@ -1,6 +1,7 @@
 import logging
 from typing import Optional, Set
 import json
+import asyncio
 
 from aiohttp import web, WSMsgType
 from .receiver import Receiver
@@ -53,15 +54,17 @@ class GamepadServer:
         self._clients.add(ws)
         log.info("Gamepad WS client connected: %s", request.remote)
 
-        # Inject ws_send callback into all ODrives
-        async def ws_send(obj):
-            try:
-                await ws.send_str(json.dumps(obj))
-            except Exception:
-                pass
+        loop = asyncio.get_running_loop()
 
+        def ws_send_threadsafe(obj):
+            if ws.closed:
+                return
+            asyncio.run_coroutine_threadsafe(ws.send_str(json.dumps(obj)), loop)
+
+        # ✅ Call the setter instead of assigning directly
         for od in self._odrives.values():
-            od.ws_send = ws_send
+            od.set_ws_send(ws_send_threadsafe)  # <-- this actually invokes your setter
+            od._loop = loop  # optional
 
         try:
             async for msg in ws:
@@ -70,10 +73,10 @@ class GamepadServer:
                 elif msg.type == WSMsgType.ERROR:
                     log.warning("Gamepad WS error: %s", ws.exception())
         finally:
-            # Cleanup ws_send
-            for od in self._receiver.odrives.values():
-                if od.ws_send == ws.send_str:
-                    od.ws_send = None
+            # Cleanup
+            for od in self._odrives.values():
+                if od.ws_send == ws_send_threadsafe:
+                    od.set_ws_send(None)
 
             await self._receiver.receive("{'control_active':False}")
             self._clients.discard(ws)
