@@ -31,9 +31,9 @@ logger.addHandler(JsonHandler())
 bus = CANBus("can0")
 
 odrives = {
-    1: ODrive(1, bus),
+    1: ODrive(1, bus, inverted = True),
     2: ODrive(2, bus),
-    3: ODrive(3, bus),
+    3: ODrive(3, bus, inverted = True),
     4: ODrive(4, bus),
 }
 
@@ -99,24 +99,49 @@ def handle_button_batch(buttons):
     else:  # reverse > 0
         speed = -reverse * max_speed
 
-    # Drivetrain inversion (1 & 3 flipped)
-    odrives[1].set_velocity(-speed)
+    # Drivetrain inversion
+    odrives[1].set_velocity(speed)
     odrives[2].set_velocity(speed)
-    odrives[3].set_velocity(-speed)
+    odrives[3].set_velocity(speed)
     odrives[4].set_velocity(speed)
+
+
+# -------------------------
+# Telemetry loop (feedback from ODrives)
+# ------------------------
+
+async def telemetry_loop(interval: float = 1.0):
+    while True:
+        data = {}
+        for node_id, od in odrives.items():
+            # call heartbeat listener
+            od.listen_for_heartbeat(timeout=0.01)
+
+            data[node_id] = {
+                "state": od.state,
+                "error_code": od.error_code,
+                "error_string": od.error_string,
+                "traj_done": od.traj_done,
+                "last_seen": od.last_heartbeat_time
+            }
+
+        print(json.dumps({"type": "drive", "data": data}))
+        await asyncio.sleep(interval)
+
 
 # -------------------------
 # MAIN
 # -------------------------
 
-async def main(heartbeat_interval: float, ws_host: str, ws_port: int):
+async def main(heartbeat_interval: float, status_int: float, ws_host: str, ws_port: int):
     receiver = Receiver(handle_gamepad_message)
     gamepad_server = GamepadServer(ws_host, ws_port, receiver)
 
     await gamepad_server.start()
 
     tasks = [
-        asyncio.create_task(heartbeat_loop(heartbeat_interval))
+        asyncio.create_task(heartbeat_loop(heartbeat_interval)),
+        asyncio.create_task(telemetry_loop(status_int))
     ]
 
     try:
@@ -136,9 +161,10 @@ async def main(heartbeat_interval: float, ws_host: str, ws_port: int):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--heartbeat", type=float, default=1.0)
+    parser.add_argument("--odrive_status_interval", type=float, default=1.0)
     parser.add_argument("--sub_url", type=str)
     parser.add_argument("--ws_host", type=str, default="0.0.0.0")
     parser.add_argument("--ws_port", type=int, default=8765)
     args = parser.parse_args()
 
-    asyncio.run(main(args.heartbeat, args.ws_host, args.ws_port))
+    asyncio.run(main(args.heartbeat, args.odrive_status_interval, args.ws_host, args.ws_port))
