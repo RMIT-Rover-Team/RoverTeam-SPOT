@@ -255,6 +255,10 @@ class Supervisor:
                 await self.handle_command(arg_c, arg_v)
                 continue
 
+            if msg.startswith("JSON "):
+                self.main_pub.send_string(f"TELEMETRY {msg}")
+                continue
+
             # Print nicely
             color = color_map.get(level, "\033[0m")
             print(f"{color}[{sub.name}]: {msg}\033[0m")
