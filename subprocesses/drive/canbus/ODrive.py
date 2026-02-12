@@ -64,7 +64,7 @@ class ODrive:
         self.inverted = inverted
         self.canbus = canbus
         self.ws_send = ws_send
-        self._loop = asyncio.get_running_loop()
+        self._loop = None
 
         self._pending_arm = False
         self._pending_disarm = False
@@ -121,9 +121,18 @@ class ODrive:
     # -------------------------
     # heartbeat and encoder listeners
     # -------------------------
+    def set_ws_send(self, ws_send):
+        """Set or update the websocket send callback and main loop."""
+        self.ws_send = ws_send
+        try:
+            # grab the currently running loop
+            self._loop = asyncio.get_running_loop()
+        except RuntimeError:
+            # if no loop running, schedule later
+            self._loop = None
+
     def _send_ws(self):
-        if self.ws_send:
-            now = time.time()
+        if self.ws_send and self._loop:
             data = {
                 "state": self.state,
                 "error_code": self.error_code,
@@ -135,11 +144,15 @@ class ODrive:
                 "encoder_velocity": self.encoder_velocity,
                 "last_encoder": self.last_encoder_time,
             }
-            asyncio.run_coroutine_threadsafe(self.ws_send({
-                "type": "drive",
-                "node_id": self.node_id,
-                "data": data
-            }), self._loop)
+            # thread-safe send
+            asyncio.run_coroutine_threadsafe(
+                self.ws_send({
+                    "type": "drive",
+                    "node_id": self.node_id,
+                    "data": data
+                }),
+                self._loop
+            )
 
     def _heartbeat_listener(self):
         while True:
