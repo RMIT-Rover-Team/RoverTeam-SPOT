@@ -119,7 +119,7 @@ async def telemetry_loop(interval: float, receiver):
                     "last_seen": od.last_heartbeat_time
                 }
 
-            print(json.dumps({"type": "drive", "data": data}))
+            print(f"JSON {json.dumps({"type": "drive", "data": data})}")
         await asyncio.sleep(interval)
 
 # -------------------------
