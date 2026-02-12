@@ -131,29 +131,26 @@ def handle_button_batch(buttons, axes):
 async def telemetry_loop(interval: float, receiver):
     HEARTBEAT_GRACE_PERIOD = interval * 3 # can skip 3 heartbeats
     while True:
-        any_ws_connected = any(getattr(od, "ws_send", None) is not None for od in odrives.values())
-        if not any_ws_connected:
-            # Collect drive status directly from each ODrive object
-            now = time.time()
-            data = {
-                node_id: {
-                    "state": od.state,
-                    "error_code": od.error_code,
-                    "error_string": od.error_string,
-                    "traj_done": od.traj_done,
-                    "last_seen": od.last_heartbeat_time,
-                    "connected": (od.last_heartbeat_time is not None) and
-                                 (now - od.last_heartbeat_time <= HEARTBEAT_GRACE_PERIOD),
-                    "encoder_position": od.encoder_position,
-                    "encoder_velocity": od.encoder_velocity,
-                    "last_encoder": od.last_encoder_time,
-                }
-                for node_id, od in odrives.items()
+        # Collect drive status directly from each ODrive object
+        now = time.time()
+        data = {
+            node_id: {
+                "state": od.state,
+                "error_code": od.error_code,
+                "error_string": od.error_string,
+                "traj_done": od.traj_done,
+                "last_seen": od.last_heartbeat_time,
+                "connected": (od.last_heartbeat_time is not None) and
+                                (now - od.last_heartbeat_time <= HEARTBEAT_GRACE_PERIOD),
+                "encoder_position": od.encoder_position,
+                "encoder_velocity": od.encoder_velocity,
+                "last_encoder": od.last_encoder_time,
             }
+            for node_id, od in odrives.items()
+        }
 
-            # Send/print JSON telemetry
-            print(f"JSON {json.dumps({'type': 'drive', 'data': data})}")
-
+        # Send/print JSON telemetry
+        print(f"JSON {json.dumps({'type': 'drive', 'data': data})}")
         await asyncio.sleep(interval)
 
 # -------------------------
