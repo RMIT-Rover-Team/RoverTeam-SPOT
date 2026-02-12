@@ -265,7 +265,8 @@ class Supervisor:
             print(f"{color}[{sub.name}]: {msg}\033[0m")
 
             # Log through telemetry
-            self.main_pub.send_string(f"TELEMETRY {level} [{sub.name}]: {msg}")
+            if not self.restart_ready:
+                self.main_pub.send_string(f"TELEMETRY {level} [{sub.name}]: {msg}")
 
     async def monitor_subsystems(self):
         while not self._stopping:
