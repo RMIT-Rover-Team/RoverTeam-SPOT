@@ -96,7 +96,7 @@ def wait_for_heartbeat(node_id: int, timeout=2.0) -> bool:
             try:
                 error, state, result, traj_done = struct.unpack("<IBBB", msg.data[:7])
                 errorString = ", ".join(decode_errors(error))
-                print(f"[INFO] Heartbeat from {node_id}: state={state}, error={errorString}")
+                print(f"[INFO] Heartbeat from {node_id}: state={state}, error={error} [{errorString}]")
             except Exception:
                 print(f"[WARN] Heartbeat format unexpected on node {node_id}")
             return True
