@@ -15,7 +15,7 @@ The following guide is for first-time installation of the SPOT operating system.
 # Installation
 To get started, ensure your platform is supported on the above table. Note that only Debian based distributions of Linux are currently supported under the 'Linux' tag. This includes Ubuntu and Linux Mint.
 
-As mentioned above, Windows support is very limited, and was mainly introduces as a measure to allow the development of the GUI client. This includes support for Cameras and Telemetry, but lacks any features relating to CAN Bus or peripheral support outside of cameras.
+As mentioned above, Windows support is very limited, and was mainly introduced as a measure to allow for the development of the GUI client. This includes support for Cameras and Telemetry, but lacks any features relating to CAN Bus or peripheral support outside of cameras.
 
 To get started, ensure you have all of the required dependencies installed:
 
