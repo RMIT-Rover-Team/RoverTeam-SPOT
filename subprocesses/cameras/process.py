@@ -75,8 +75,7 @@ async def handle_cameras(request):
 
 
 async def handle_ping(request):
-    return web.Response(text="pong")
-
+    return web.Response(text="cameras")
 
 async def handle_offer(request):
     params = await request.json()

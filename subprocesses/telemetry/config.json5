@@ -3,11 +3,14 @@
     "priority": 0,
     "args": {
         "--ws_host": "0.0.0.0",
-        "--ws_port": "3002",
+        "--ws_port": "5005",
         "--vitals_interval": 10,
         "--ignore_filter": [
             // Ignore windows-based error with port binding
-            "[WinError 10049]"
+            "[WinError 10049]",
+
+            // Ignore pings, only if the status is 200 (OK)
+            "\"GET /ping HTTP/1.1\" 200"
         ]
     }
 }  

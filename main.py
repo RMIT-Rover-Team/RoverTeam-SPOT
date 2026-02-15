@@ -79,6 +79,7 @@ class Supervisor:
         self.loop = asyncio.get_event_loop()
         self.subsystems: Dict[str, Subsystem] = {}
         self._stopping = False
+        self.restart_ready = False
 
         # ZMQ PUB for telemetry
         self.zmq_ctx = zmq.asyncio.Context()
@@ -255,12 +256,17 @@ class Supervisor:
                 await self.handle_command(arg_c, arg_v)
                 continue
 
+            if msg.startswith("JSON "):
+                self.main_pub.send_string(f"TELEMETRY {msg}")
+                continue
+
             # Print nicely
             color = color_map.get(level, "\033[0m")
             print(f"{color}[{sub.name}]: {msg}\033[0m")
 
             # Log through telemetry
-            self.main_pub.send_string(f"TELEMETRY {level} [{sub.name}]: {msg}")
+            if not self.restart_ready:
+                self.main_pub.send_string(f"TELEMETRY {level} [{sub.name}]: {msg}")
 
     async def monitor_subsystems(self):
         while not self._stopping:
@@ -369,10 +375,51 @@ class Supervisor:
         await asyncio.gather(*(self.kill_subsystem(sub) for sub in self.subsystems.values()))
         log.info("[supervisor]: All subsystems have been terminated")
 
+    def shutdown(self):
+        """
+        Cleanly shuts down all subsystems and exits the supervisor.
+        Can be called from signals or commands.
+        """
+        if self._stopping:
+            log.warning("[supervisor]: Shutdown already in progress")
+            return
+
+        log.info("[supervisor]: Initiating full shutdown...")
+
+        # Mark stopping flag so monitor loop stops
+        self._stopping = True
+
+        async def _shutdown():
+            # Stop all subsystems
+            await self.stop_all()
+
+            # Give a moment to flush logs / sockets
+            await asyncio.sleep(0.1)
+
+            log.info("[supervisor]: Exiting supervisor process")
+            # Close ZMQ cleanly
+            self.main_pub.close()
+            self.zmq_ctx.term()
+
+            # Stop the event loop safely
+            self.loop.stop()
+
+        # Schedule the coroutine
+        asyncio.create_task(_shutdown())
+
     async def handle_command(self, arg_c: int, arg_v):
         return_message = "Invalid command"
         return_level = "ERROR"
-        if arg_c <= 2:
+
+        if self.restart_ready:
+            if arg_c == 3 and arg_v[2] == "y":
+                return_message = "Shutting down..."
+                self.shutdown()
+            else:
+                return_message = "Canceled shutdown"
+                self.restart_ready = False
+
+        elif arg_c <= 2:
             return_message = "No command specified"
         
         # restart
@@ -426,6 +473,12 @@ class Supervisor:
                         return_message = f"Started {arg_v[3]}"
                         return_level = "WARNING"
                         await self.launch(sub)
+
+        # restart-all
+        elif arg_v[2] == "restart-all":
+            return_message = "WARNING: The restart-all command kills SPOT. It relies on systemctl to restart the process."
+            return_message += "\nAre you sure you want to restart? [y/n]:"
+            self.restart_ready = True
         
         self.main_pub.send_string(f"TELEMETRY ERROR [supervisor]: {return_message}")
         color = color_map.get(return_level, "\033[0m")

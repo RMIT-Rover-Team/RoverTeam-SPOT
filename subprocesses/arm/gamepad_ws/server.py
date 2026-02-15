@@ -1,7 +1,5 @@
 import logging
 from typing import Optional, Set
-import json
-import asyncio
 
 from aiohttp import web, WSMsgType
 from .receiver import Receiver
@@ -23,15 +21,13 @@ class GamepadServer:
         host: str,
         port: int,
         receiver: Receiver,
-        odrives,
-        service_name: str = "drive",
+        service_name: str = "arm",
         *,
         cors_middleware: Optional[list] = None,  # optional middleware list
     ):
         self._host = host
         self._port = port
         self._receiver = receiver
-        self._odrives = odrives
         self._service_name = service_name
 
         # aiohttp app + runner
@@ -48,37 +44,26 @@ class GamepadServer:
     # Handlers
     # ---------------------------------------------------------
     async def _websocket_handler(self, request: web.Request):
+        """
+        Handles WS upgrade on /ws.
+        Receives text messages and forwards them to the Receiver.
+        """
         ws = web.WebSocketResponse()
         await ws.prepare(request)
 
         self._clients.add(ws)
         log.info("Gamepad WS client connected: %s", request.remote)
 
-        loop = asyncio.get_running_loop()
-
-        def ws_send_threadsafe(obj):
-            if ws.closed:
-                return
-            coro = ws.send_str(json.dumps(obj))
-            asyncio.run_coroutine_threadsafe(coro, loop)
-
-        # ✅ Call the setter instead of assigning directly
-        for od in self._odrives.values():
-            od.set_ws_send(ws_send_threadsafe)  # <-- this actually invokes your setter
-
         try:
             async for msg in ws:
                 if msg.type == WSMsgType.TEXT:
+                    # Forward to your Receiver instance.
                     await self._receiver.receive(msg.data)
+
                 elif msg.type == WSMsgType.ERROR:
                     log.warning("Gamepad WS error: %s", ws.exception())
-        finally:
-            # Cleanup
-            for od in self._odrives.values():
-                if od.ws_send == ws_send_threadsafe:
-                    od.set_ws_send(None)
 
-            await self._receiver.receive("{'control_active':False}")
+        finally:
             self._clients.discard(ws)
             log.info("Gamepad WS client disconnected: %s", request.remote)
 
