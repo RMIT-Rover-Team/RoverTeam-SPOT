@@ -9,8 +9,12 @@ from gamepad_ws.receiver import Receiver
 from gamepad_ws.server import GamepadServer
 from gamepad_ws.cors import cors_middleware
 
+#For Telemetry we directly connect to odrives (rover specific)
 from canbus.canbus import CANBus
 from canbus.ODrive import ODrive
+
+#For driving the wheels, we use the abstracted layer for torque / stability control
+import driveStackBinaries.torque as torque
 
 # -------------------------
 # CONFIG
@@ -40,6 +44,10 @@ odrives = {
 
 # Control state
 control_active = False
+
+#Torque Handler
+torqueSubsystem = torque.TorqueHandler("can0")
+torqueSubsystem.set_mode(torque.LOCKED_VELOCITY)
 
 # -------------------------
 # Heartbeat
@@ -76,16 +84,13 @@ async def handle_gamepad_message(msg: dict, receiver):
     # Arm ODrives on first control message
     if "control_active" in msg:
         if receiver.control_active:
-            print(f"[INFO] Arming ODrives, Clearing Errors")
-            for od in odrives.values():
-                if not od.is_armed:
-                    od.arm()
+            print(f"[INFO] Arming Drive System, Clearing Errors")
+            torqueSubsystem.enable()
 
         if not receiver.control_active:
-            for od in odrives.values():
-                print(f"[INFO] Disarming ODrives")
-                if od.is_armed:
-                    od.disarm()
+            print(f"[INFO] Disarming Drive System")
+            torqueSubsystem.disable()
+
     elif "buttons" in msg and "axes" in msg:
         axes = msg["axes"]
         buttons = msg["buttons"]
@@ -96,8 +101,16 @@ async def handle_gamepad_message(msg: dict, receiver):
 
 def handle_button_batch(buttons, axes):
     rearm_button = buttons[0] if len(buttons) > 0 else 0.0
-    max_speed = 200
+    max_speed = 260
     DEADZONE = 0.05
+
+    #[TODO] Add ability to change drive mode
+    """
+    One of these three:
+    torqueSubsystem.set_mode(torque.UNLOCKED_VELOCITY) - Safety Override, direct wheel drive
+    torqueSubsystem.set_mode(torque.LOCKED_VELOCITY) - Normal driving, hill climb / rough terrain (default mode)
+    torqueSubsystem.set_mode(torque.UNLOCKED_TORQUE) - Ripping swinburne's leg off again
+    """
 
     x = axes[2] if len(axes) > 2 else 0.0
     y = axes[3] if len(axes) > 3 else 0.0
@@ -118,14 +131,7 @@ def handle_button_batch(buttons, axes):
     right_speed = max(-max_speed, min(max_speed, right_speed))
 
     # Apply to motors
-    for od in odrives.values():
-        if rearm_button > 0 and not od.is_armed:
-            od.arm()
-        if od.is_armed:
-            if od.node_id in (1, 2):
-                od.set_velocity(left_speed)
-            else:
-                od.set_velocity(right_speed)
+    torqueSubsystem.set_speed(left_speed,right_speed)
 
 # -------------------------
 # Telemetry loop
@@ -161,7 +167,11 @@ async def telemetry_loop(interval: float, receiver):
 
 async def main(heartbeat_interval: float, status_int: float, ws_host: str, ws_port: int):
     receiver = Receiver(lambda msg: handle_gamepad_message(msg, receiver))
-    gamepad_server = GamepadServer(ws_host, ws_port, receiver, odrives)
+    gamepad_server = GamepadServer(ws_host, ws_port, receiver, sender_agents=odrives)
+
+    # Bring up the drive stack
+    torqueSubsystem.set_mode(torque.LOCKED_VELOCITY)
+    torqueSubsystem.enable()
 
     # Start server
     await gamepad_server.start()
@@ -193,6 +203,7 @@ if __name__ == "__main__":
     parser.add_argument("--sub_url", type=str)
     parser.add_argument("--ws_host", type=str, default="0.0.0.0")
     parser.add_argument("--ws_port", type=int, default=8765)
+    parser.add_argument("--can_port", type=str)
     args = parser.parse_args()
 
     asyncio.run(main(args.heartbeat, args.odrive_status_interval, args.ws_host, args.ws_port))
