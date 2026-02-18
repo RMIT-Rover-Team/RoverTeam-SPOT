@@ -9,8 +9,11 @@ from gamepad_ws.receiver import Receiver
 from gamepad_ws.server import GamepadServer
 from gamepad_ws.cors import cors_middleware
 
+#For Telemetry we directly connect to odrives (rover specific)
 from canbus.canbus import CANBus
 from canbus.ODrive import ODrive
+
+#For driving the wheels, we use the abstracted layer for torque / stability control
 import driveStackBinaries.torque as torque
 
 # -------------------------
@@ -44,7 +47,7 @@ control_active = False
 
 #Torque Handler
 torqueSubsystem = torque.TorqueHandler("can0")
-torqueSubsystem.set_mode(torque.UNLOCKED_VELOCITY)
+torqueSubsystem.set_mode(torque.LOCKED_VELOCITY)
 
 # -------------------------
 # Heartbeat
@@ -104,8 +107,8 @@ def handle_button_batch(buttons, axes):
     #[TODO] Add ability to change drive mode
     """
     One of these three:
-    torqueSubsystem.set_mode(torque.UNLOCKED_VELOCITY) - Safety Override
-    torqueSubsystem.set_mode(torque.LOCKED_VELOCITY) - Normal driving, hill climb / rough terrain
+    torqueSubsystem.set_mode(torque.UNLOCKED_VELOCITY) - Safety Override, direct wheel drive
+    torqueSubsystem.set_mode(torque.LOCKED_VELOCITY) - Normal driving, hill climb / rough terrain (default mode)
     torqueSubsystem.set_mode(torque.UNLOCKED_TORQUE) - Ripping swinburne's leg off again
     """
 
@@ -167,7 +170,7 @@ async def main(heartbeat_interval: float, status_int: float, ws_host: str, ws_po
     gamepad_server = GamepadServer(ws_host, ws_port, receiver, sender_agents=odrives)
 
     # Bring up the drive stack
-    torqueSubsystem.set_mode(torque.UNLOCKED_VELOCITY)
+    torqueSubsystem.set_mode(torque.LOCKED_VELOCITY)
     torqueSubsystem.enable()
 
     # Start server
@@ -200,6 +203,7 @@ if __name__ == "__main__":
     parser.add_argument("--sub_url", type=str)
     parser.add_argument("--ws_host", type=str, default="0.0.0.0")
     parser.add_argument("--ws_port", type=int, default=8765)
+    parser.add_argument("--can_port", type=str)
     args = parser.parse_args()
 
     asyncio.run(main(args.heartbeat, args.odrive_status_interval, args.ws_host, args.ws_port))
