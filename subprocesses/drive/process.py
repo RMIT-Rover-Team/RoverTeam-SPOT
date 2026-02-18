@@ -11,6 +11,7 @@ from gamepad_ws.cors import cors_middleware
 
 from canbus.canbus import CANBus
 from canbus.ODrive import ODrive
+import driveStackBinaries.torque as torque
 
 # -------------------------
 # CONFIG
@@ -162,6 +163,8 @@ async def telemetry_loop(interval: float, receiver):
 async def main(heartbeat_interval: float, status_int: float, ws_host: str, ws_port: int):
     receiver = Receiver(lambda msg: handle_gamepad_message(msg, receiver))
     gamepad_server = GamepadServer(ws_host, ws_port, receiver, odrives)
+
+    # Bring up the drive stack
 
     # Start server
     await gamepad_server.start()
