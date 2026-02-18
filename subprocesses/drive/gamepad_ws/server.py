@@ -23,7 +23,7 @@ class GamepadServer:
         host: str,
         port: int,
         receiver: Receiver,
-        odrives,
+        sender_agents,
         service_name: str = "drive",
         *,
         cors_middleware: Optional[list] = None,  # optional middleware list
@@ -31,7 +31,7 @@ class GamepadServer:
         self._host = host
         self._port = port
         self._receiver = receiver
-        self._odrives = odrives
+        self._sender_agents = sender_agents
         self._service_name = service_name
 
         # aiohttp app + runner
@@ -62,8 +62,7 @@ class GamepadServer:
             coro = ws.send_str(json.dumps(obj))
             asyncio.run_coroutine_threadsafe(coro, loop)
 
-        # ✅ Call the setter instead of assigning directly
-        for od in self._odrives.values():
+        for od in self._sender_agents.values():
             od.set_ws_send(ws_send_threadsafe)  # <-- this actually invokes your setter
 
         try:
@@ -74,7 +73,7 @@ class GamepadServer:
                     log.warning("Gamepad WS error: %s", ws.exception())
         finally:
             # Cleanup
-            for od in self._odrives.values():
+            for od in self._sender_agents.values():
                 if od.ws_send == ws_send_threadsafe:
                     od.set_ws_send(None)
 
