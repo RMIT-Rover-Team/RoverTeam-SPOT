@@ -161,7 +161,7 @@ async def telemetry_loop(interval: float, receiver):
 
 async def main(heartbeat_interval: float, status_int: float, ws_host: str, ws_port: int):
     receiver = Receiver(lambda msg: handle_gamepad_message(msg, receiver))
-    gamepad_server = GamepadServer(ws_host, ws_port, receiver, odrives)
+    gamepad_server = GamepadServer(ws_host, ws_port, receiver, sender_agents=odrives)
 
     # Start server
     await gamepad_server.start()
