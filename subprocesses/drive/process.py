@@ -101,6 +101,14 @@ def handle_button_batch(buttons, axes):
     max_speed = 200
     DEADZONE = 0.05
 
+    #[TODO] Add ability to change drive mode
+    """
+    One of these three:
+    torqueSubsystem.set_mode(torque.UNLOCKED_VELOCITY) - Safety Override
+    torqueSubsystem.set_mode(torque.LOCKED_VELOCITY) - Normal driving, hill climb / rough terrain
+    torqueSubsystem.set_mode(torque.UNLOCKED_TORQUE) - Ripping swinburne's leg off again
+    """
+
     x = axes[2] if len(axes) > 2 else 0.0
     y = axes[3] if len(axes) > 3 else 0.0
 
