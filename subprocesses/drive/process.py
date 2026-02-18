@@ -98,7 +98,7 @@ async def handle_gamepad_message(msg: dict, receiver):
 
 def handle_button_batch(buttons, axes):
     rearm_button = buttons[0] if len(buttons) > 0 else 0.0
-    max_speed = 200
+    max_speed = 260
     DEADZONE = 0.05
 
     #[TODO] Add ability to change drive mode
