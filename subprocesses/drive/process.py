@@ -42,6 +42,10 @@ odrives = {
 # Control state
 control_active = False
 
+#Torque Handler
+torqueSubsystem = torque.TorqueHandler("can0")
+torqueSubsystem.set_mode(torque.UNLOCKED_VELOCITY)
+
 # -------------------------
 # Heartbeat
 # -------------------------
@@ -77,16 +81,13 @@ async def handle_gamepad_message(msg: dict, receiver):
     # Arm ODrives on first control message
     if "control_active" in msg:
         if receiver.control_active:
-            print(f"[INFO] Arming ODrives, Clearing Errors")
-            for od in odrives.values():
-                if not od.is_armed:
-                    od.arm()
+            print(f"[INFO] Arming Drive System, Clearing Errors")
+            torqueSubsystem.enable()
 
         if not receiver.control_active:
-            for od in odrives.values():
-                print(f"[INFO] Disarming ODrives")
-                if od.is_armed:
-                    od.disarm()
+            print(f"[INFO] Disarming Drive System")
+            torqueSubsystem.disable()
+
     elif "buttons" in msg and "axes" in msg:
         axes = msg["axes"]
         buttons = msg["buttons"]
@@ -119,14 +120,7 @@ def handle_button_batch(buttons, axes):
     right_speed = max(-max_speed, min(max_speed, right_speed))
 
     # Apply to motors
-    for od in odrives.values():
-        if rearm_button > 0 and not od.is_armed:
-            od.arm()
-        if od.is_armed:
-            if od.node_id in (1, 2):
-                od.set_velocity(left_speed)
-            else:
-                od.set_velocity(right_speed)
+    torqueSubsystem.set_speed(left_speed,right_speed)
 
 # -------------------------
 # Telemetry loop
@@ -165,6 +159,8 @@ async def main(heartbeat_interval: float, status_int: float, ws_host: str, ws_po
     gamepad_server = GamepadServer(ws_host, ws_port, receiver, sender_agents=odrives)
 
     # Bring up the drive stack
+    torqueSubsystem.set_mode(torque.UNLOCKED_VELOCITY)
+    torqueSubsystem.enable()
 
     # Start server
     await gamepad_server.start()
