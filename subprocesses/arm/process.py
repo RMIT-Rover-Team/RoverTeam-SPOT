@@ -10,6 +10,10 @@ from gamepad_ws.server import GamepadServer
 from canbus.canbus import CANBus
 from canbus.MyActuator import MyActuator
 
+#Import the universal payload control layer
+import payloadControlBinaries.pyRover as pyRover
+
+
 
 # -------------------------
 # CONFIG
@@ -30,6 +34,9 @@ logger.addHandler(JsonHandler())
 # -------------------------
 
 bus = CANBus("can0")
+
+#Initialise the master
+payloadMaster = pyRover.PyRover("can0",1)
 
 actuators = {
     3: MyActuator(3, bus),
