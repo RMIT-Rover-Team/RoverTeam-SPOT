@@ -39,6 +39,9 @@ class MyActuator:
             daemon=True
         )
         self._listener_thread.start()
+    
+    def set_ws_send(self, ws_send):
+        self.ws_send = ws_send
 
     # -------------------------
     # CAN ID helpers
