@@ -77,7 +77,7 @@ class GamepadServer:
                 if od.ws_send == ws_send_threadsafe:
                     od.set_ws_send(None)
 
-            await self._receiver.receive("{'control_active':False}")
+            await self._receiver.receive('{"control_active": false}')
             self._clients.discard(ws)
             log.info("Gamepad WS client disconnected: %s", request.remote)
 
