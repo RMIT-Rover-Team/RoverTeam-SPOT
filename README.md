@@ -15,7 +15,7 @@ The following guide is for first-time installation of the SPOT operating system.
 # Installation
 To get started, ensure your platform is supported on the above table. Note that only Debian based distributions of Linux are currently supported under the 'Linux' tag. This includes Ubuntu and Linux Mint.
 
-As mentioned above, Windows support is very limited, and was mainly introduces as a measure to allow the development of the GUI client. This includes support for Cameras and Telemetry, but lacks any features relating to CAN Bus or peripheral support outside of cameras.
+As mentioned above, Windows support is very limited, and was mainly introduced as a measure to allow the development of the GUI client. This includes support for Cameras and Telemetry, but lacks any features relating to CAN Bus or peripheral support outside of cameras.
 
 To get started, ensure you have all of the required dependencies installed:
 
@@ -126,8 +126,8 @@ More on processes and how to use/create them can be found in the next section
 # Using SPOT Subprocesses
 SPOT relies on subprocesses to manage tasks. This ensures that processes are segregated, and can error or break without affecting the rest of the system.
 
-## File Heirarchy
-All subprocesses are stored under the `subprocesses/` folder with the following heirarchy:
+## File Hierarchy
+All subprocesses are stored under the `subprocesses/` folder with the following hierarchy:
 
 ```
 subprocesses/
@@ -139,7 +139,7 @@ subprocesses/
 ```
 
 ## `config.json5`
-Each process has a config file written in JSON5. This is backwards-compatable with regular JSON, but has support for comments and additional quality-of-life improvements.
+Each process has a config file written in JSON5. This is backwards-compatible with regular JSON, but has support for comments and additional quality-of-life improvements.
 
 The following schema can be used for a config file:
 
@@ -209,4 +209,141 @@ This system gives full control and flexibility to any subprocess, whilst keeping
 If you are using a pip library, ensure you add it using Poetry. For example:
 ```bash
 poetry add some-pip-library
+```
+
+# Raspberry Pi Image Setup
+This is a seperate guide on how to setup the image and environment for a production-ready raspberry pi for the Equinox Software Stack.
+
+The main image run on the Pis are the base Raspberry Pi OS (Lite) available by default. To start, download the [**Raspberry Pi Imager**](https://www.raspberrypi.com/software/). Run the application and select the Raspberry Pi Model you are using. SPOT is designed for the Raspberry Pi 4, and we recommended using the 4B (8GB) model.
+
+After that, select the image. Scroll down to *Raspberry Pi OS (other)* and then select *Raspberry Pi OS Lite (64-Bit)*.
+
+Plug in and select the SD card you would like to use. The SD card will be erased. We recommend at least 32GB of storage.
+
+Enter the hostname you would like to use. We use the following naming conventions for the rover:
+
+
+**Equinox Onboard PIs:**
+Primary: `Equinox1`
+Secondary: `Equinox2`
+
+**Development PIs:**
+`rover`
+*OR*
+`roverdev`
+
+On the setup screen of the Pi Imager software, use the following settings when prompted:
+
+Capital City: `Canberra (Australia)`
+Time Zone: `Australia/Melbourne` **OR** `Australia/Adelade`
+Keyboard Layout: `us`
+
+username: `rover`
+password: `rover`
+
+*Skip the WIFI SETUP (unused)*
+
+Enable **SSH** and set to `Use password authentication`
+
+*Skip the ENABLE RASPBERRY PI CONNECT (disable it)*
+
+Flash the image to the SD Card.
+
+# Raspberry Pi OS Setup
+For production readiness on Equinox, the following steps must be completed to ensure the following items operate correctly. Complete these steps after imaging the SD Card as shown above.
+
+After completing the above imaging process, you should be able to ssh into the pi using the hostname and username. Some issues may arise, Windows seems to be the best for this when plugged directly in through an ethernet cable. Ensure you have the ethernet connection set to `dhcp`. We will change this soon:
+```bash
+ssh rover@<HOSTNAME>.local
+
+e.g.
+ssh rover@Equinox1.local
+```
+
+### Network Setup using Static IP
+Both static IPs and Windows ICS support can be configured to run. using DHCP with a static-IP fallback. This allows for static addressing when on the rover, and internet connection when connected to a Windows laptop. Internet on the pi is required for some of the following steps, so we recommend setting this stage up first.
+
+```bash
+sudo nano /etc/systemd/network/20-eth0.network
+```
+Add the following:
+```ini
+[Match]
+Name=eth0
+
+[Network]
+DHCP=yes
+Address=YOUR STATIC IP /24
+
+[DHCP]
+RouteMetric=10
+RequestBroadcast=yes
+UseDNS=yes
+UseRoutes=yes
+Timeout=5
+
+[IPv4]
+RouteMetric=100
+```
+We recommend using one of the following for the static IP:
+Equinox1: `Address=192.168.40.1/24`
+Equinox2: `Address=192.168.40.2/24`
+Other/Dev: `Address=192.168.40.5/24`
+
+This full file is included in `RoverTeam-SPOT/setup/20-eth0.network`
+
+After this, run the following for it to take effect:
+```bash
+sudo systemctl restart systemd-networkd
+```
+
+And then restart the PI itself:
+```bash
+sudo reboot
+```
+After reboot, you should be able to SSH using the same method as before, or you can try using the static IP. ensure you have the ethernet interface set up for static IP in the same address range if you wish to use this. e.g. use manual IPv4 assignment with `192.168.40.10`.
+
+### CAN Bus over SPI
+To use the custom Equinox carrier boards and their in-build CAN transceivers, you must complete the following.
+
+Clone the SPOT repo onto the PI. For this, you'll need an internet connection on the PI. This can be achieved using Windows ISC if the above section was completed correctly. You can also achieve this step without cloning the repo, by manually copying the file across from a local version of the repo (USB stick, sftp, etc).
+
+Start by copying `RoverTeam-SPOT/setup/mcpcustom.dtbo` into `/boot/firmware/overlays/` on the pi's filesystem.
+
+Then, use:
+```bash
+sudo nano /boot/firmware/config.txt
+```
+And add inside the `[all]` tag at the top:
+```ini
+dtparam=spi=on
+dtoverlay=mcpcustom,spi0-0,interrupt=25
+```
+An example `config.txt` with these included is provided in `RoverTeam-SPOT/setup/config.txt`
+
+This will enable the SPI Can Drivers on the pi for the custom Equinox CAN carrier board.
+
+You can test this works by rebooting the pi and running:
+```bash
+ip addr
+```
+
+You should see a `can0` device. You can manually enable this using the following command:
+```bash
+sudo ip link set can0 up type can bitrate 125000
+```
+If the correct hardware is available, you should now see the interface as `UP`. You can test this using the `can-utils` package.
+
+```bash
+sudo apt update
+sudo apt upgrade -y
+sudo apt install -y can-utils
+```
+This allows you to view all traffic on the CAN network:
+```bash
+candump can0
+```
+or send CAN commands manually:
+```bash
+cansend can0 123#DEADBEEF
 ```
