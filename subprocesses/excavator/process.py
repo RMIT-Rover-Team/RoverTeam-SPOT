@@ -7,13 +7,11 @@ import time
 from gamepad_ws.receiver import Receiver
 from gamepad_ws.server import GamepadServer
 
-from canbus.canbus import CANBus
-from canbus.MyActuator import MyActuator
-
 #Import the universal payload control layer
 import payloadControlBinaries.pyRover as pyRover
 
 
+PayloadID = 0xB
 
 # -------------------------
 # CONFIG
@@ -29,38 +27,13 @@ logger.setLevel(logging.DEBUG)
 logger.addHandler(JsonHandler())
 
 
-# -------------------------
-# CAN + Actuator setup
-# -------------------------
-
-bus = CANBus("can0")
 
 #Initialise the master
 payloadMaster = pyRover.PyRover("can0",1)
 
-actuators = {
-    3: MyActuator(3, bus),
-    4: MyActuator(4, bus),
-}
-
-MAX_ANGLE = 45.0
-DEADZONE = 0.05
-
-
 # -------------------------
 # Helpers
 # -------------------------
-
-def map_axis_to_angle(value: float) -> float:
-    """
-    Maps joystick axis [-1,1] to [-45°,45°]
-    """
-    value = max(-1.0, min(1.0, value))
-
-    if abs(value) < DEADZONE:
-        return 0.0
-
-    return value * MAX_ANGLE
 
 
 # -------------------------
@@ -80,11 +53,14 @@ def handle_axes(axes):
     axis2 = axes[2] if len(axes) > 2 else 0.0
     axis3 = axes[3] if len(axes) > 3 else 0.0
 
-    target_3 = map_axis_to_angle(axis2)
-    target_4 = map_axis_to_angle(axis3)
+    Mapped2 = axis2 * 120
+    Mapped3 = axis3 * 120
 
-    actuators[3].set_position(target_3, max_speed_dps=90)
-    actuators[4].set_position(target_4, max_speed_dps=90)
+    if (Mapped2 > 0.1):
+        pyRover.SetMotorSpeed(PayloadID,0,Mapped2)
+
+    if (Mapped3 > 0.1):
+        pyRover.SetMotorSpeed(PayloadID,1,Mapped3)
 
 
 # -------------------------
@@ -96,18 +72,10 @@ async def telemetry_loop(interval: float):
         now = time.time()
 
         data = {
-            motor_id: {
-                "position_deg": act.position_deg,
-                "last_update": act.last_position_time,
-                "connected": (
-                    act.last_position_time is not None and
-                    now - act.last_position_time <= interval * 3
-                )
-            }
-            for motor_id, act in actuators.items()
+            "payloadOnline":payloadMaster.ping(PayloadID)
         }
 
-        print(f"JSON {json.dumps({'type': 'arm', 'data': data})}")
+        print(f"JSON {json.dumps({'type': 'excavator', 'data': data})}")
         await asyncio.sleep(interval)
 
 async def heartbeat_loop(interval: float):
@@ -123,7 +91,7 @@ async def heartbeat_loop(interval: float):
 async def main(heartbeat: float, sub_url: str, status_interval: float, ws_host: str, ws_port: int):
 
     receiver = Receiver(lambda msg: handle_gamepad_message(msg, receiver))
-    gamepad_server = GamepadServer(ws_host, ws_port, receiver, sender_agents=actuators)
+    gamepad_server = GamepadServer(ws_host, ws_port, receiver, sender_agents={})
 
     await gamepad_server.start()
 
