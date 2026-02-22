@@ -1,6 +1,6 @@
 {
     "name": "cameras",
-    "priority": 10,
+    "priority": 5,
     "args": {
         "--webrtc_host": "0.0.0.0",
         "--webrtc_port": "3001",
