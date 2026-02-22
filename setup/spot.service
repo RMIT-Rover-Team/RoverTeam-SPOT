@@ -1,0 +1,28 @@
+[Unit]
+Description=SPOT Rover Software
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=rover
+WorkingDirectory=/home/rover/RoverTeam-SPOT
+
+# Ensure poetry is found
+Environment="PATH=/home/rover/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+Environment=PYTHONUNBUFFERED=1
+
+ExecStart=/home/rover/.local/bin/poetry run python main.py
+
+Restart=always
+RestartSec=2
+
+# Prevent rapid crash loops
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

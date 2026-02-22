@@ -347,3 +347,60 @@ or send CAN commands manually:
 ```bash
 cansend can0 123#DEADBEEF
 ```
+
+### Automatically Bring `can0` Up
+If you would like to automatically bring up the `can0` interface without manually typing the `sudo ip link` command, you can create a systemd-networkd setup.
+Start by ensuring systemd-networkd is working as expected:
+```bash
+sudo systemctl enable systemd-networkd
+sudo systemctl start systemd-networkd
+```
+Then, we can add a custom network file to ensure the bus is brought up automatically. We make the bus poll every 100ms if the interface is down. This is a good amount of time, however if you're worried about performance, you can adjust this. Use the following command:
+```bash
+sudo nano /etc/systemd/network/80-can.network
+```
+And add the following in:
+```ini
+[Match]
+Name=can0
+
+[CAN]
+BitRate=125000
+RestartSec=100ms
+```
+This full file is available under `RoverTeam-SPOT/setup/80-can.network`.
+
+To ensure this is working, restart the Pi:
+```bash
+sudo reboot
+```
+And once booted, check the status of the CAN Bus:
+```
+ip addr show can0
+```
+It should be `UP` without having to manually run the command.
+
+### SPOT as a Systemd Service
+SPOT can be run as a Systemd service. This is the recommended approach to ensure the SPOT software is always running, including at startup.
+
+This reduces the need for manual intervention through SSH to start SPOT.
+
+For this, a file has been provided to copy into your systemd service list. Set your working directory to the `RoverTeam-SPOT/` directory and then run:
+```bash
+sudo cp setup/spot.service /etc/systemd/system/spot.service
+```
+Then reload and enable the service:
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable spot
+sudo systemctl start spot
+```
+You can verify the service is running:
+```bash
+systemctl status spot
+```
+And check the logs to ensure SPOT has started correctly:
+```bash
+journalctl -u spot -f
+```
+The SPOT service will now automatically bring SPOT online without manual intervention during startup. 
