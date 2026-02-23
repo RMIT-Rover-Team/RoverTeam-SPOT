@@ -14,6 +14,7 @@ from supervisor.logging import get_logger
 # ============================================================
 SUBSYSTEMS_DIR = Path(__file__).parent.parent / "subprocesses"
 CONFIG_FILE = Path(__file__).parent / "config.json5"
+PROFILE_FILE = Path(__file__).parent.parent / "profile.json5"
 
 log = get_logger("config_loader")
 
@@ -23,7 +24,15 @@ def load_config() -> dict:
             return json5.load(f)
     except Exception as e:
         raise RuntimeError(f"Failed to load supervisor config: {e}")
-
+    
+def load_profile() -> dict:
+    try:
+        with open(PROFILE_FILE, "r", encoding="utf-8") as f:
+            profile = json5.load(f)
+            log.info(f"\n\nLoaded SPOT profile: {profile.get('name', 'Unnamed Profile')}")
+            return profile
+    except Exception as e:
+        raise RuntimeError(f"Failed to load SPOT profile: {e}")
 
 # ============================================================
 # DATA STRUCTURE
@@ -57,6 +66,7 @@ def load_subsystems() -> Dict[str, Subsystem]:
     """
 
     subsystems: Dict[str, Subsystem] = {}
+    profile_processes = load_profile().get("processes", [])
 
     if not SUBSYSTEMS_DIR.exists():
         log.error(f"Subprocess directory not found: {SUBSYSTEMS_DIR}")
@@ -88,7 +98,7 @@ def load_subsystems() -> Dict[str, Subsystem]:
 
         if priority < 0:
             # Explicit disable mechanism
-            log.info(f"{name}: disabled (priority < 0)")
+            log.debug(f"{name}: disabled (priority < 0)")
             continue
 
         subsystem = Subsystem(
@@ -98,13 +108,32 @@ def load_subsystems() -> Dict[str, Subsystem]:
             extra_args=flatten_args(args),
         )
 
+        # Mark as intentionally stopped if not in profile
+        if name not in profile_processes:
+            subsystem.intentionally_stopped = True
+            log.debug(f"{name}: manually stopped (not in profile)")
+        else:
+            subsystem.intentionally_stopped = False
+
         if name in subsystems:
             log.error(f"Duplicate subsystem name detected: {name}")
             continue
 
         subsystems[name] = subsystem
 
-    log.info(f"Loaded subsystems: {list(subsystems.keys())}")
+    log.debug(f"Loaded subsystems: {list(subsystems.keys())}")
+
+    # -------------------------------
+    # Render final subsystem status
+    # -------------------------------
+    for name, sub in subsystems.items():
+        if sub.intentionally_stopped:
+            # Red text
+            print(f"  \033[91m{name} - STOPPED\033[0m")
+        else:
+            # Green text
+            print(f"  \033[92m{name} - READY\033[0m")
+    print()  # blank line
 
     return subsystems
 

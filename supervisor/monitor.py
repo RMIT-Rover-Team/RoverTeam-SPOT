@@ -45,7 +45,7 @@ class Monitor:
         Runs until supervisor shutdown.
         """
 
-        self.log.info("Monitor started")
+        self.log.log(level=25, msg="process monitor started")
 
         while not self._stopping:
 

@@ -14,7 +14,7 @@ def main():
         loop.run_until_complete(supervisor.shutdown())
     finally:
         loop.close()
-        print("Exited cleanly.")
+        print("\033[92mExited cleanly.\033[0m")
 
 if __name__ == "__main__":
     main()

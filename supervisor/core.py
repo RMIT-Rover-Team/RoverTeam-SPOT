@@ -119,7 +119,7 @@ class Supervisor:
     # STARTUP
     # ============================================================
     async def start(self):
-        self.log.info("Starting supervisor...")
+        self.log.log(level=25, msg="supervisor started")
 
         await self.process_manager.start_all()
 

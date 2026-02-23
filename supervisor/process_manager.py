@@ -1,9 +1,11 @@
 # supervisor/process_manager.py
 
+import os
 import asyncio
 import json
 import sys
 from typing import Dict
+from pathlib import Path
 
 from supervisor.config_loader import Subsystem, load_config
 
@@ -50,6 +52,9 @@ class ProcessManager:
         }
 
         for sub in self.subsystems.values():
+            if sub.intentionally_stopped:
+                continue
+
             if 0 <= sub.priority_rank <= 9:
                 tiers[1].append(sub)
             elif 10 <= sub.priority_rank <= 99:
@@ -61,7 +66,7 @@ class ProcessManager:
             if not tiers[tier]:
                 continue
 
-            self.log.info(
+            self.log.debug(
                 f"Launching TIER {tier}: {[s.name for s in tiers[tier]]}"
             )
 
@@ -88,11 +93,16 @@ class ProcessManager:
             cmd.extend(sub.extra_args)
 
         try:
+            env = os.environ.copy()
+            ROOT = Path(sub.path).resolve().parents[2]
+            env["PYTHONPATH"] = str(ROOT) + os.pathsep + env.get("PYTHONPATH", "")
+
             sub.process = await asyncio.create_subprocess_exec(
                 *cmd,
                 stdin=asyncio.subprocess.PIPE,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
+                env=env
             )
 
             sub.last_heartbeat = self.loop.time()
@@ -101,8 +111,8 @@ class ProcessManager:
             self.log.success(f"{sub.name} started")
 
             # Start stream readers
-            asyncio.create_task(self._read_stream(sub, sub.process.stdout))
-            asyncio.create_task(self._read_stream(sub, sub.process.stderr))
+            asyncio.create_task(self._read_stream(sub, sub.process.stdout, "stdout"))
+            asyncio.create_task(self._read_stream(sub, sub.process.stderr, "stderr"))
 
         except Exception as e:
             self.log.error(f"Failed to start {sub.name}: {e}")
@@ -205,7 +215,6 @@ class ProcessManager:
             # -------------------------------------------
             # SYSTEM COMMAND
             # -------------------------------------------
-            print(f"Received from {sub.name}: {message}")
             if message.startswith("SYSTEM CMD"):
                 parts = message.split()
 
