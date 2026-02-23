@@ -75,6 +75,9 @@ async def telemetry_loop(interval: float):
             "payloadOnline":payloadMaster.ping(PayloadID)
         }
 
+        if not data["payloadOnline"]:
+            logger.error("Payload Offline")
+
         print(f"JSON {json.dumps({'type': 'excavator', 'data': data})}")
         await asyncio.sleep(interval)
 
