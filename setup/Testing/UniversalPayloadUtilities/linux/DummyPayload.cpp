@@ -10,18 +10,22 @@ float jointPositions[maxJoints] = {0};
 float jointSpeeds[maxJoints] = {0};
 
 void fakeSetPos(int motor, double value){
+    printf("Setting pos of %i to %f\n",motor,value);
     jointPositions[motor] = value;
 }
 
 double fakeGetPos(int motor){
+    printf("Getting pos of %i as %f\n",motor,jointPositions[motor]);
     return jointPositions[motor];
 }
 
 void fakeSetSpeed(int motor, double value){
+    printf("Setting speed of %i to %f\n",motor,value);
     jointSpeeds[motor] = value;
 }
 
 double fakeGetSpeed(int motor){
+    printf("Getting speed of %i as %f\n",motor,jointSpeeds[motor]);
     return jointSpeeds[motor];
 }
 

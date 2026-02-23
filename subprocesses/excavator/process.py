@@ -8,10 +8,14 @@ from gamepad_ws.receiver import Receiver
 from gamepad_ws.server import GamepadServer
 
 #Import the universal payload control layer
-import payloadControlBinaries.pyRover as pyRover
+from sharedlib.payloadControl import pyRover
 
 
+# -------------------------
+# Connect to the payload
+# -------------------------
 PayloadID = 0xB
+payloadMaster = pyRover.PyRover("can0",1)
 
 # -------------------------
 # CONFIG
@@ -26,10 +30,6 @@ logger = logging.getLogger()
 logger.setLevel(logging.DEBUG)
 logger.addHandler(JsonHandler())
 
-
-
-#Initialise the master
-payloadMaster = pyRover.PyRover("can0",1)
 
 # -------------------------
 # Helpers
