@@ -118,7 +118,7 @@ async def main(heartbeat: float, sub_url: str, status_interval: float, ws_host: 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--heartbeat", type=float, default=10)
-    parser.add_argument("--status_interval", type=float, default=0.2)
+    parser.add_argument("--status_interval", type=float, default=0.5)
     parser.add_argument("--ws_host", type=str, default="0.0.0.0")
     parser.add_argument("--sub_url", type=str)
     parser.add_argument("--ws_port", type=int, default=8766)

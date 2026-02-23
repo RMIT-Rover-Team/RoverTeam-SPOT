@@ -121,7 +121,7 @@ if __name__ == "__main__":
     parser.add_argument("--ws_port", type=int, default=8766)
     parser.add_argument("--ws_name", type=str, default="arm")
     parser.add_argument("--heartbeat", type=float, default=10)
-    parser.add_argument("--status_interval", type=float, default=0.05)
+    parser.add_argument("--status_interval", type=float, default=0.5)
     args = parser.parse_args()
 
     asyncio.run(main(args.ws_host, args.ws_port, args.ws_name, args.heartbeat, args.status_interval))
