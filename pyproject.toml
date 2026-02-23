@@ -3,7 +3,11 @@ name = "roverteam-spot"
 version = "0.1.0"
 description = ""
 authors = [
-    {name = "Aston Bolwell"}
+    {name = "Aston Bolwell"},
+    {name = "Kaelan Grainger"},
+    {name = "Minh Tran"},
+    {name = "Jonathan Tran"},
+    {name = "Ritish Kandel"}
 ]
 readme = "README.md"
 requires-python = ">=3.12"
