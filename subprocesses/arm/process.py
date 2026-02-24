@@ -91,6 +91,10 @@ async def telemetry_loop(control_socket: ControlSocket, interval: float):
 
         # apply angles to actuators
         for actuator, angle in zip(ACTUATORS, joint_angles):
+
+            #debug logging
+            logger.debug(f"Setting {actuator.name} to {angle:.2f} degrees")
+
             actuator.set_position(angle)
 
         # send telemetry
