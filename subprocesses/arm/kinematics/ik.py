@@ -1,4 +1,6 @@
 # kinematics/ik.py
+import os
+
 import numpy as np
 from ikpy.chain import Chain
 from ikpy.link import OriginLink
@@ -6,7 +8,7 @@ from math import radians
 from typing import List, Tuple
 
 # Load the URDF
-CHAIN = Chain.from_urdf_file("kinematics/arm.urdf")
+CHAIN = Chain.from_urdf_file(os.path.join(os.path.dirname(__file__), "arm.urdf"))
 
 # IKPy expects target as 4x4 transformation matrix
 def rpy_to_matrix(roll: float, pitch: float, yaw: float) -> np.ndarray:
