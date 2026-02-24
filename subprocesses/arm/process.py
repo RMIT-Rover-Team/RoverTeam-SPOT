@@ -3,11 +3,15 @@ import argparse
 import json
 import logging
 import time
-from typing import List
+from typing import Dict
 
 from sharedlib.controlsocket.controlsocket import ControlSocket
 from sharedlib.controlsocket import schema
 from sharedlib.canbus.client import CANClient
+
+from sharedlib.actuator.actuator_manager import ActuatorManager
+from sharedlib.actuator.myactuator import MyActuator
+
 
 # -------------------------
 # LOGGING
@@ -22,96 +26,64 @@ logger = logging.getLogger()
 logger.setLevel(logging.DEBUG)
 logger.addHandler(JsonHandler())
 
-# -------------------------
-# ARM STATE
-# -------------------------
-NUM_AXES = 6
-AXIS_NAMES = ["axis_x", "axis_y", "axis_z", "axis_roll", "axis_pitch", "axis_yaw"]
-AXIS_IDS =   [None,     None,     None,     0x144,       0x143,        0x142     ]  # CAN IDs per axis
-
-axis_targets: List[float] = [0.0] * NUM_AXES
-axis_positions: List[float] = [0.0] * NUM_AXES
-axis_last_update: List[float] = [None] * NUM_AXES
-
-can_client: CANClient | None = None
 
 # -------------------------
-# CALLBACK FOR AXES
+# ARM CONFIG (NEW STYLE)
 # -------------------------
-async def handle_axis(axis_id: int, value: float):
-    axis_targets[axis_id] = value
-    axis_last_update[axis_id] = time.time()
+ACTUATORS = [
+    {"name": "axis_roll",  "id": 0x144, "type": "myactuator"},
+    {"name": "axis_pitch", "id": 0x143, "type": "myactuator"},
+    {"name": "axis_yaw",   "id": 0x142, "type": "myactuator"},
+    
+    {"name": "axis_x", "id": None, "type": None},
+    {"name": "axis_y", "id": None, "type": None},
+    {"name": "axis_z", "id": None, "type": None},
+]
+
+
+# -------------------------
+# GLOBAL STATE
+# -------------------------
+axis_targets: Dict[str, float] = {}
+axis_last_update: Dict[str, float] = {}
+
+actuators: Dict[str, MyActuator] = {}
+manager: ActuatorManager | None = None
+
+
+# -------------------------
+# AXIS CALLBACK
+# -------------------------
+async def handle_axis(axis_name: str, value: float):
+    axis_targets[axis_name] = value
+    axis_last_update[axis_name] = time.time()
+
+    actuator = actuators.get(axis_name)
+
+    # If axis has no hardware bound, safely return
+    if actuator is None:
+        return
+
+    actuator.set_velocity(value)
+
 
 # -------------------------
 # TELEMETRY LOOP
 # -------------------------
 async def telemetry_loop(control_socket: ControlSocket, interval: float):
     while True:
-        for i, name in enumerate(AXIS_NAMES):
-            await control_socket.outputs.update_output(f"{name}_vel", axis_targets[i])
-            await control_socket.outputs.update_output(f"{name}_pos", axis_positions[i])
-        await asyncio.sleep(interval)
+        for config in ACTUATORS:
+            name = config["name"]
+            actuator = actuators.get(name)
 
-# -------------------------
-# MOTOR POSITION CALLBACK GENERATOR
-# -------------------------
-def make_motor_position_callback(axis_idx: int):
-    def callback(data: bytes):
-        if len(data) < 8 or data[0] != 0x92:
-            return
-        motor_angle_int = int.from_bytes(data[4:8], "little", signed=True)
-        axis_positions[axis_idx] = motor_angle_int * 0.01  # 0.01 deg per LSB
-    return callback
+            vel = axis_targets.get(name, 0.0)
+            pos = actuator.position if actuator else 0.0
 
-# -------------------------
-# AXES CAN LOOP (send velocity if changed)
-# -------------------------
-async def axis_can_loop(rate_hz: float = 20.0):
-    global can_client
-    interval = 1.0 / rate_hz
-
-    last_sent_speed: List[int | None] = [None] * NUM_AXES
-
-    while True:
-        if can_client is not None:
-            for i, motor_id in enumerate(AXIS_IDS):
-                if motor_id is None:
-                    continue
-
-                speed_int32 = int(axis_targets[i] / 0.01)
-                if speed_int32 != last_sent_speed[i]:
-                    last_sent_speed[i] = speed_int32
-
-                    data = bytearray(8)
-                    data[0] = 0xA2
-                    data[1] = 0xFF
-                    data[2] = 0x00
-                    data[3] = 0x00
-                    data[4:8] = speed_int32.to_bytes(4, "little", signed=True)
-
-                    try:
-                        await can_client.send(motor_id, data)
-                    except Exception as e:
-                        print(f"[canbus] Error sending axis {i}: {e}")
+            await control_socket.outputs.update_output(f"{name}_vel", vel)
+            await control_socket.outputs.update_output(f"{name}_pos", pos)
 
         await asyncio.sleep(interval)
 
-# -------------------------
-# POSITION REQUEST LOOP
-# -------------------------
-async def position_request_loop(rate_hz: float = 20.0):
-    interval = 1.0 / rate_hz
-    while True:
-        if can_client is not None:
-            for i, motor_id in enumerate(AXIS_IDS):
-                if motor_id is None:
-                    continue
-                data = bytes([0x92] + [0]*7)
-                try:
-                    await can_client.send(motor_id, data)
-                except Exception as e:
-                    print(f"[canbus] Error requesting position axis {i}: {e}")
-        await asyncio.sleep(interval)
 
 # -------------------------
 # HEARTBEAT LOOP
@@ -121,41 +93,73 @@ async def heartbeat_loop(interval: float):
         print("HEARTBEAT")
         await asyncio.sleep(interval)
 
+
 # -------------------------
 # MAIN
 # -------------------------
-async def main(ws_host: str, ws_port: int, ws_name: str, heartbeat: float, status_interval: float):
-    global can_client
+async def main(
+    ws_host: str,
+    ws_port: int,
+    ws_name: str,
+    heartbeat: float,
+    status_interval: float,
+):
+    global manager
 
-    # Initialize CAN client
+    # -------------------------
+    # CAN CLIENT
+    # -------------------------
     can_client = CANClient()
     await can_client.start()
 
-    # Subscribe to position feedback for all axes with motors
-    for i, motor_id in enumerate(AXIS_IDS):
-        if motor_id is not None:
-            can_client.subscribe(motor_id + 0x100, make_motor_position_callback(i))
+    # -------------------------
+    # ACTUATOR MANAGER
+    # -------------------------
+    manager = ActuatorManager(can_client, rate_hz=20.0)
 
-    control_socket = ControlSocket(ws_host, ws_port, ws_name, allow_multiple_clients=False)
+    # Register actuators (only real hardware)
+    for config in ACTUATORS:
+        if config["type"] != "myactuator":
+            continue
 
-    # Register axes
-    for i, name in enumerate(AXIS_NAMES):
+        actuator = MyActuator(config["name"], config["id"])
+        actuators[config["name"]] = actuator
+        manager.register(actuator)
+
+    # Start manager loop
+    asyncio.create_task(manager.loop())
+
+    # -------------------------
+    # CONTROL SOCKET
+    # -------------------------
+    control_socket = ControlSocket(
+        ws_host,
+        ws_port,
+        ws_name,
+        allow_multiple_clients=False,
+    )
+
+    # Register ALL axis handlers (including x/y/z)
+    for config in ACTUATORS:
+        axis_name = config["name"]
+
         schema.register_axis(
             control_socket.inputs,
-            name,
-            callback=lambda v, axis=i: handle_axis(axis, v),
+            axis_name,
+            callback=lambda v, axis=axis_name: handle_axis(axis, v),
         )
-        control_socket.outputs.register_output(f"{name}_vel")
-        control_socket.outputs.register_output(f"{name}_pos")
+
+        control_socket.outputs.register_output(f"{axis_name}_vel")
+        control_socket.outputs.register_output(f"{axis_name}_pos")
 
     await control_socket.start()
-    logger.info(f"ControlSocket running on ws://{ws_host}:{ws_port} as '{ws_name}'")
+    logger.info(
+        f"ControlSocket running on ws://{ws_host}:{ws_port} as '{ws_name}'"
+    )
 
     tasks = [
         asyncio.create_task(heartbeat_loop(heartbeat)),
         asyncio.create_task(telemetry_loop(control_socket, status_interval)),
-        asyncio.create_task(axis_can_loop(20.0)),       # 200Hz velocity updates
-        asyncio.create_task(position_request_loop(20.0)), # 20Hz position requests
     ]
 
     try:
@@ -168,9 +172,8 @@ async def main(ws_host: str, ws_port: int, ws_name: str, heartbeat: float, statu
 
         await asyncio.sleep(0)
         await control_socket.stop()
+        await can_client.close()
 
-        if can_client:
-            await can_client.close()
 
 # -------------------------
 # ENTRYPOINT
@@ -182,6 +185,7 @@ if __name__ == "__main__":
     parser.add_argument("--ws_name", type=str, default="arm")
     parser.add_argument("--heartbeat", type=float, default=10)
     parser.add_argument("--status_interval", type=float, default=0.5)
+
     args = parser.parse_args()
 
     asyncio.run(
