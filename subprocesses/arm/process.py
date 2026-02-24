@@ -27,7 +27,7 @@ logger.addHandler(JsonHandler())
 # -------------------------
 NUM_AXES = 6
 AXIS_NAMES = ["axis_x", "axis_y", "axis_z", "axis_roll", "axis_pitch", "axis_yaw"]
-AXIS_IDS =   [None,     None,     None,     0x144,       0x142,        0x143     ]  # CAN IDs per axis
+AXIS_IDS =   [None,     None,     None,     0x145,       0x142,        0x143     ]  # CAN IDs per axis
 
 axis_targets: List[float] = [0.0] * NUM_AXES
 axis_positions: List[float] = [0.0] * NUM_AXES
