@@ -2,7 +2,6 @@ import asyncio
 import argparse
 import json
 import logging
-import time
 from typing import Dict
 
 from sharedlib.controlsocket.controlsocket import ControlSocket
@@ -11,7 +10,7 @@ from sharedlib.canbus.client import CANClient
 
 from sharedlib.actuator.actuator_manager import ActuatorManager
 from sharedlib.actuator.myactuator import MyActuator
-
+from sharedlib.actuator.dummyactuator import DummyActuator
 
 # -------------------------
 # LOGGING
@@ -28,26 +27,23 @@ logger.addHandler(JsonHandler())
 
 
 # -------------------------
-# ARM CONFIG (NEW STYLE)
+# ACTUATOR LIST (NEW STYLE)
 # -------------------------
 ACTUATORS = [
-    {"name": "axis_roll",  "id": 0x144, "type": "myactuator"},
-    {"name": "axis_pitch", "id": 0x143, "type": "myactuator"},
-    {"name": "axis_yaw",   "id": 0x142, "type": "myactuator"},
-    
-    {"name": "axis_x", "id": None, "type": None},
-    {"name": "axis_y", "id": None, "type": None},
-    {"name": "axis_z", "id": None, "type": None},
+    MyActuator("axis_roll", 0x144),
+    MyActuator("axis_pitch", 0x143),
+    MyActuator("axis_yaw", 0x142),
+
+    DummyActuator("axis_x"),
+    DummyActuator("axis_y"),
+    DummyActuator("axis_z"),
 ]
 
 
 # -------------------------
 # GLOBAL STATE
 # -------------------------
-axis_targets: Dict[str, float] = {}
-axis_last_update: Dict[str, float] = {}
-
-actuators: Dict[str, MyActuator] = {}
+actuators: Dict[str, object] = {}
 manager: ActuatorManager | None = None
 
 
@@ -55,16 +51,9 @@ manager: ActuatorManager | None = None
 # AXIS CALLBACK
 # -------------------------
 async def handle_axis(axis_name: str, value: float):
-    axis_targets[axis_name] = value
-    axis_last_update[axis_name] = time.time()
-
     actuator = actuators.get(axis_name)
-
-    # If axis has no hardware bound, safely return
-    if actuator is None:
-        return
-
-    actuator.set_velocity(value)
+    if actuator:
+        actuator.set_velocity(value)
 
 
 # -------------------------
@@ -72,12 +61,15 @@ async def handle_axis(axis_name: str, value: float):
 # -------------------------
 async def telemetry_loop(control_socket: ControlSocket, interval: float):
     while True:
-        for config in ACTUATORS:
-            name = config["name"]
-            actuator = actuators.get(name)
+        for actuator in ACTUATORS:
+            name = actuator.name
 
-            vel = axis_targets.get(name, 0.0)
-            pos = actuator.position if actuator else 0.0
+            # Continuously integrate dummy actuators
+            if isinstance(actuator, DummyActuator):
+                await actuator.update()
+
+            vel = getattr(actuator, "velocity", 0.0)
+            pos = getattr(actuator, "position", 0.0)
 
             await control_socket.outputs.update_output(f"{name}_vel", vel)
             await control_socket.outputs.update_output(f"{name}_pos", pos)
@@ -117,16 +109,13 @@ async def main(
     # -------------------------
     manager = ActuatorManager(can_client, rate_hz=20.0)
 
-    # Register actuators (only real hardware)
-    for config in ACTUATORS:
-        if config["type"] != "myactuator":
-            continue
+    for actuator in ACTUATORS:
+        actuators[actuator.name] = actuator
 
-        actuator = MyActuator(config["name"], config["id"])
-        actuators[config["name"]] = actuator
-        manager.register(actuator)
+        # Only register real CAN actuators with manager
+        if isinstance(actuator, MyActuator):
+            manager.register(actuator)
 
-    # Start manager loop
     asyncio.create_task(manager.loop())
 
     # -------------------------
@@ -139,9 +128,8 @@ async def main(
         allow_multiple_clients=False,
     )
 
-    # Register ALL axis handlers (including x/y/z)
-    for config in ACTUATORS:
-        axis_name = config["name"]
+    for actuator in ACTUATORS:
+        axis_name = actuator.name
 
         schema.register_axis(
             control_socket.inputs,
