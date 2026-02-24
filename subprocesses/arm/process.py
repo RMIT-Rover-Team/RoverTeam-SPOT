@@ -27,7 +27,7 @@ logger.addHandler(JsonHandler())
 
 
 # -------------------------
-# ACTUATOR LIST (NEW STYLE)
+# ACTUATOR LIST
 # -------------------------
 ACTUATORS = [
     MyActuator("axis_roll", 0x144),
@@ -64,11 +64,11 @@ async def telemetry_loop(control_socket: ControlSocket, interval: float):
         for actuator in ACTUATORS:
             name = actuator.name
 
-            vel = getattr(actuator, "velocity", 0.0)
-            pos = getattr(actuator, "position", 0.0)
+            pos = actuator.get_position()
+            vel = actuator.get_velocity()
 
-            await control_socket.outputs.update_output(f"{name}_vel", vel)
             await control_socket.outputs.update_output(f"{name}_pos", pos)
+            await control_socket.outputs.update_output(f"{name}_vel", vel)
 
         await asyncio.sleep(interval)
 
@@ -130,8 +130,8 @@ async def main(
             callback=lambda v, axis=axis_name: handle_axis(axis, v),
         )
 
-        control_socket.outputs.register_output(f"{axis_name}_vel")
         control_socket.outputs.register_output(f"{axis_name}_pos")
+        control_socket.outputs.register_output(f"{axis_name}_vel")
 
     await control_socket.start()
     logger.info(
