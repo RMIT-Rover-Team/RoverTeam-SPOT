@@ -7,8 +7,8 @@ from typing import List
 
 from sharedlib.controlsocket.controlsocket import ControlSocket
 from sharedlib.controlsocket import schema
-
 from sharedlib.canbus.client import CANClient
+
 
 # -------------------------
 # LOGGING
@@ -18,9 +18,11 @@ class JsonHandler(logging.StreamHandler):
         log_obj = {"level": record.levelname, "msg": record.getMessage()}
         print(json.dumps(log_obj), flush=True)
 
+
 logger = logging.getLogger()
 logger.setLevel(logging.DEBUG)
 logger.addHandler(JsonHandler())
+
 
 # -------------------------
 # ARM STATE
@@ -28,33 +30,36 @@ logger.addHandler(JsonHandler())
 NUM_AXES = 6
 AXIS_NAMES = ["axis_x", "axis_y", "axis_z", "axis_roll", "axis_pitch", "axis_yaw"]
 
-axis_targets: List[float] = [0.0] * NUM_AXES    # raw velocity commands
-axis_positions: List[float] = [0.0] * NUM_AXES  # simulated positions
+axis_targets: List[float] = [0.0] * NUM_AXES
+axis_positions: List[float] = [0.0] * NUM_AXES
 axis_last_update: List[float] = [None] * NUM_AXES
+
+can_client: CANClient | None = None
+
 
 # -------------------------
 # CALLBACK FOR AXES
 # -------------------------
-can_client = CANClient()
-
 async def handle_axis(axis_id: int, value: float):
+    global can_client
+
     axis_targets[axis_id] = value
     axis_last_update[axis_id] = time.time()
     logger.debug(f"Axis {AXIS_NAMES[axis_id]} set to {value}")
 
-    if axis_id == 4:  # Only control the pitch axis for this example
-        speed = int(value * 1000)  # Scale to mm/s or mrad/s
+    # Only control pitch axis
+    if axis_id == 4 and can_client is not None:
+        speed = int(value * 1000)
 
         data = bytearray(8)
-        data[0] = 0xA2 # Command ID (Set Closed-Loop Speed)
-        data[1] = 0xFF # Max tourque
-        data[2] = 0x00 # Null
-        data[3] = 0x00 # Null
-
-        # 32-bit little-endian
+        data[0] = 0xA2
+        data[1] = 0xFF
+        data[2] = 0x00
+        data[3] = 0x00
         data[4:8] = speed.to_bytes(4, byteorder="little", signed=True)
 
         await can_client.send(0x280, bytes(data))
+
 
 # -------------------------
 # TELEMETRY LOOP
@@ -62,11 +67,11 @@ async def handle_axis(axis_id: int, value: float):
 async def telemetry_loop(control_socket: ControlSocket, interval: float):
     while True:
         for i, name in enumerate(AXIS_NAMES):
-            # Update position instantly based on raw input
             axis_positions[i] += axis_targets[i] * interval
             await control_socket.outputs.update_output(name, axis_positions[i])
-        
+
         await asyncio.sleep(interval)
+
 
 # -------------------------
 # HEARTBEAT LOOP
@@ -76,18 +81,25 @@ async def heartbeat_loop(interval: float):
         print("HEARTBEAT")
         await asyncio.sleep(interval)
 
+
 # -------------------------
 # MAIN
 # -------------------------
 async def main(ws_host: str, ws_port: int, ws_name: str, heartbeat: float, status_interval: float):
+    global can_client
+
+    # Initialize CAN client
+    can_client = CANClient()
+    await can_client.start()
+
     control_socket = ControlSocket(ws_host, ws_port, ws_name, allow_multiple_clients=False)
-    
-    # Register axes with ControlSocket
+
+    # Register axes
     for i, name in enumerate(AXIS_NAMES):
         schema.register_axis(
             control_socket.inputs,
             name,
-            callback=lambda v, axis=i: handle_axis(axis, v)
+            callback=lambda v, axis=i: handle_axis(axis, v),
         )
         control_socket.outputs.register_output(name)
 
@@ -106,8 +118,13 @@ async def main(ws_host: str, ws_port: int, ws_name: str, heartbeat: float, statu
     finally:
         for t in tasks:
             t.cancel()
+
         await asyncio.sleep(0)
         await control_socket.stop()
+
+        if can_client:
+            await can_client.close()
+
 
 # -------------------------
 # ENTRYPOINT
@@ -121,4 +138,12 @@ if __name__ == "__main__":
     parser.add_argument("--status_interval", type=float, default=0.5)
     args = parser.parse_args()
 
-    asyncio.run(main(args.ws_host, args.ws_port, args.ws_name, args.heartbeat, args.status_interval))
+    asyncio.run(
+        main(
+            args.ws_host,
+            args.ws_port,
+            args.ws_name,
+            args.heartbeat,
+            args.status_interval,
+        )
+    )
