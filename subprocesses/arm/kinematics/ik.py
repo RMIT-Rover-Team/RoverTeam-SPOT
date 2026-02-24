@@ -61,22 +61,19 @@ def solve_ik(x: float, y: float, z: float, roll: float, pitch: float, yaw: float
     """
     Solve IK for the arm.
 
-    Args:
-        x, y, z: target position in mm
-        roll, pitch, yaw: target orientation in degrees
-
-    Returns:
-        List of 6 joint angles [J1..J6] in degrees
+    Returns a list of 6 joint angles in degrees [J1..J6]
     """
     target_frame = pose_to_matrix(x, y, z, roll, pitch, yaw)
 
-    # Use length of active_links_mask to get proper initial_position array
+    # Length of active_links_mask for initial position
     n_joints = len(CHAIN.active_links_mask)
+
+    # Call inverse_kinematics positionally (do NOT use 'target=' keyword)
     joint_angles_rad = CHAIN.inverse_kinematics(
-        target=target_frame,
+        target_frame,
         initial_position=[0.0] * n_joints
     )
 
-    # Return only the 6 active joint angles (skip fixed base link)
-    joint_angles_deg = [degrees(a) for a in joint_angles_rad[1:7]]
+    # Skip fixed base link, take first 6 active joints
+    joint_angles_deg = [np.degrees(a) for a in joint_angles_rad[1:7]]
     return joint_angles_deg
