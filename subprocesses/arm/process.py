@@ -2,6 +2,7 @@ import asyncio
 import argparse
 import json
 import logging
+import time
 from typing import Dict
 
 from sharedlib.controlsocket.controlsocket import ControlSocket
@@ -12,6 +13,8 @@ from sharedlib.actuator.actuator_manager import ActuatorManager
 from sharedlib.actuator.myactuator import MyActuator
 from sharedlib.actuator.dummyactuator import DummyActuator
 
+from kinematics.ik import solve_ik  # our IK solver
+
 # -------------------------
 # LOGGING
 # -------------------------
@@ -20,25 +23,24 @@ class JsonHandler(logging.StreamHandler):
         log_obj = {"level": record.levelname, "msg": record.getMessage()}
         print(json.dumps(log_obj), flush=True)
 
-
 logger = logging.getLogger()
 logger.setLevel(logging.DEBUG)
 logger.addHandler(JsonHandler())
 
-
 # -------------------------
 # ACTUATOR LIST
 # -------------------------
+# J1,2,3 are dummy (cartesian integrators)
+# J4,5,6 are MyActuator
 ACTUATORS = [
-    MyActuator("axis_roll", 0x144),
-    MyActuator("axis_pitch", 0x143),
-    MyActuator("axis_yaw", 0x142),
+    DummyActuator("J1"),
+    DummyActuator("J2"),
+    DummyActuator("J3"),
 
-    DummyActuator("axis_x"),
-    DummyActuator("axis_y"),
-    DummyActuator("axis_z"),
+    MyActuator("J4", 0x142),
+    MyActuator("J5", 0x143),
+    MyActuator("J6", 0x144),
 ]
-
 
 # -------------------------
 # GLOBAL STATE
@@ -46,32 +48,59 @@ ACTUATORS = [
 actuators: Dict[str, object] = {}
 manager: ActuatorManager | None = None
 
+# Desired end-effector position in mm and degrees
+desired_position = {"x": 400.0, "y": 0.0, "z": 200.0, "roll": 0.0, "pitch": 0.0, "yaw": 0.0}
+last_time = time.time()
+
+# Velocity inputs in mm/s or deg/s (from control socket)
+velocity_inputs = {"x": 0.0, "y": 0.0, "z": 0.0, "roll": 0.0, "pitch": 0.0, "yaw": 0.0}
 
 # -------------------------
 # AXIS CALLBACK
 # -------------------------
 async def handle_axis(axis_name: str, value: float):
-    actuator = actuators.get(axis_name)
-    if actuator:
-        actuator.set_velocity(value)
-
+    velocity_inputs[axis_name] = value
 
 # -------------------------
-# TELEMETRY LOOP
+# TELEMETRY + IK LOOP
 # -------------------------
 async def telemetry_loop(control_socket: ControlSocket, interval: float):
+    global last_time
     while True:
-        for actuator in ACTUATORS:
-            name = actuator.name
+        now = time.time()
+        dt = now - last_time
+        last_time = now
 
+        # integrate velocity inputs to desired position
+        desired_position["x"] += velocity_inputs["x"] * dt
+        desired_position["y"] += velocity_inputs["y"] * dt
+        desired_position["z"] += velocity_inputs["z"] * dt
+        desired_position["roll"] += velocity_inputs["roll"] * dt
+        desired_position["pitch"] += velocity_inputs["pitch"] * dt
+        desired_position["yaw"] += velocity_inputs["yaw"] * dt
+
+        # compute IK for desired position
+        joint_angles = solve_ik(
+            desired_position["x"],
+            desired_position["y"],
+            desired_position["z"],
+            desired_position["roll"],
+            desired_position["pitch"],
+            desired_position["yaw"]
+        )
+
+        # apply angles to actuators
+        for actuator, angle in zip(ACTUATORS, joint_angles):
+            actuator.set_position(angle)
+
+        # send telemetry
+        for actuator in ACTUATORS:
             pos = actuator.get_position()
             vel = actuator.get_velocity()
-
-            await control_socket.outputs.update_output(f"{name}_pos", pos)
-            await control_socket.outputs.update_output(f"{name}_vel", vel)
+            await control_socket.outputs.update_output(f"{actuator.name}_pos", pos)
+            await control_socket.outputs.update_output(f"{actuator.name}_vel", vel)
 
         await asyncio.sleep(interval)
-
 
 # -------------------------
 # HEARTBEAT LOOP
@@ -80,7 +109,6 @@ async def heartbeat_loop(interval: float):
     while True:
         print("HEARTBEAT")
         await asyncio.sleep(interval)
-
 
 # -------------------------
 # MAIN
@@ -121,22 +149,18 @@ async def main(
         allow_multiple_clients=False,
     )
 
-    for actuator in ACTUATORS:
-        axis_name = actuator.name
-
+    # register inputs for cartesian velocities
+    for axis_name in velocity_inputs.keys():
         schema.register_axis(
             control_socket.inputs,
             axis_name,
-            callback=lambda v, axis=axis_name: handle_axis(axis, v),
+            callback=lambda v, axis=axis_name: asyncio.create_task(handle_axis(axis, v)),
         )
-
         control_socket.outputs.register_output(f"{axis_name}_pos")
         control_socket.outputs.register_output(f"{axis_name}_vel")
 
     await control_socket.start()
-    logger.info(
-        f"ControlSocket running on ws://{ws_host}:{ws_port} as '{ws_name}'"
-    )
+    logger.info(f"ControlSocket running on ws://{ws_host}:{ws_port} as '{ws_name}'")
 
     tasks = [
         asyncio.create_task(heartbeat_loop(heartbeat)),
@@ -155,7 +179,6 @@ async def main(
         await control_socket.stop()
         await can_client.close()
 
-
 # -------------------------
 # ENTRYPOINT
 # -------------------------
@@ -165,7 +188,7 @@ if __name__ == "__main__":
     parser.add_argument("--ws_port", type=int, default=8766)
     parser.add_argument("--ws_name", type=str, default="arm")
     parser.add_argument("--heartbeat", type=float, default=10)
-    parser.add_argument("--status_interval", type=float, default=0.5)
+    parser.add_argument("--status_interval", type=float, default=0.05)
 
     args = parser.parse_args()
 
