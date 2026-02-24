@@ -51,12 +51,7 @@ async def handle_axis(axis_id: int, value: float):
 async def telemetry_loop(control_socket: ControlSocket, interval: float):
     while True:
         for i, name in enumerate(AXIS_NAMES):
-            # integrate to get position (deg)
-            axis_positions[i] += axis_targets[i] * interval
-            # send both speed (deg/s float) and CAN int32 for debugging
-            speed_int32 = int(axis_targets[i] / 0.01)
             await control_socket.outputs.update_output(name, axis_targets[i])
-            await control_socket.outputs.update_output(name, speed_int32)
 
         await asyncio.sleep(interval)
 
