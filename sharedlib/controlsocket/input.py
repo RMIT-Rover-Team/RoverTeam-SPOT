@@ -17,17 +17,11 @@ class InputRegistry:
         name: str,
         type_: str = "axis",
         *,
-        min_val: float = -1.0,
-        max_val: float = 1.0,
-        deadzone: float = 0.0,
         callback: Optional[InputCallback] = None,
         values: Optional[list] = None,  # for enums
     ):
         self._inputs[name] = {
             "type": type_,
-            "min": min_val,
-            "max": max_val,
-            "deadzone": deadzone,
             "values": values,
         }
         if callback:
@@ -57,9 +51,8 @@ class InputRegistry:
         if t == "axis":
             if not isinstance(value, (int, float)):
                 return False
-            if abs(value) < spec.get("deadzone", 0):
-                value = 0
-            return spec["min"] <= value <= spec["max"]
+
+            return True
 
         if t == "bool":
             return isinstance(value, bool)
