@@ -64,10 +64,6 @@ async def telemetry_loop(control_socket: ControlSocket, interval: float):
         for actuator in ACTUATORS:
             name = actuator.name
 
-            # Continuously integrate dummy actuators
-            if isinstance(actuator, DummyActuator):
-                await actuator.update()
-
             vel = getattr(actuator, "velocity", 0.0)
             pos = getattr(actuator, "position", 0.0)
 
@@ -111,10 +107,7 @@ async def main(
 
     for actuator in ACTUATORS:
         actuators[actuator.name] = actuator
-
-        # Only register real CAN actuators with manager
-        if isinstance(actuator, MyActuator):
-            manager.register(actuator)
+        manager.register(actuator)
 
     asyncio.create_task(manager.loop())
 
