@@ -46,8 +46,7 @@ def solve_ik(x: float, y: float, z: float, roll: float, pitch: float, yaw: float
     joint_angles_rad = CHAIN.inverse_kinematics_frame(
         target_frame,
         initial_position=[0.0] * n_joints,
-        max_iter=100,
-        tol=1e-3
+        max_iter=100
     )
 
     # Only the 6 active joints (skip base/fixed links)
