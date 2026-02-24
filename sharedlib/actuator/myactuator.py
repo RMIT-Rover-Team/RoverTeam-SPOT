@@ -30,10 +30,7 @@ class MyActuator(Actuator):
         angle_int32 = int(self.target_position / 0.01)
 
         # Limit maximum speed in deg/s (uint16)
-        speed_uint16 = int(0xFFFF)  # max speed, can adjust if needed
-
-        # Max torque in %, 0-255
-        max_torque = 255  # max torque, can adjust if needed
+        speed_uint16 = int(500)  # max speed, can adjust if needed\
 
         data = bytearray(8)
         data[0] = 0xA4          # Force control command
