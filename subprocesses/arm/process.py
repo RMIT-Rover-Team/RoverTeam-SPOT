@@ -41,7 +41,7 @@ can_client: CANClient | None = None
 # CALLBACK FOR AXES
 # -------------------------
 async def handle_axis(axis_id: int, value: float):
-    axis_targets[axis_id] = value
+    axis_targets[axis_id] = int(value * 0x7FFFFFFF)
     axis_last_update[axis_id] = time.time()
 
 
@@ -52,7 +52,7 @@ async def telemetry_loop(control_socket: ControlSocket, interval: float):
     while True:
         for i, name in enumerate(AXIS_NAMES):
             axis_positions[i] += axis_targets[i] * interval
-            await control_socket.outputs.update_output(name, axis_positions[i])
+            await control_socket.outputs.update_output(name, axis_targets[i])
 
         await asyncio.sleep(interval)
 
@@ -80,7 +80,7 @@ async def pitch_can_loop(rate_hz: float = 200.0):
             elif value < -1.0:
                 value = -1.0
 
-            speed = int(value * 0x7FFFFFFF)
+            speed = axis_targets[4]
 
             data = bytearray(8)
             data[0] = 0xA2
