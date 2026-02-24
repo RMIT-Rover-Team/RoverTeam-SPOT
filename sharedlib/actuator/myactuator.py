@@ -36,8 +36,8 @@ class MyActuator(Actuator):
         max_torque = 255  # max torque, can adjust if needed
 
         data = bytearray(8)
-        data[0] = 0xA9          # Force control command
-        data[1] = max_torque
+        data[0] = 0xA4          # Force control command
+        data[1] = 0x00
         data[2:4] = speed_uint16.to_bytes(2, "little", signed=False)
         data[4:8] = angle_int32.to_bytes(4, "little", signed=True)
 
