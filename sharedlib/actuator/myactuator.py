@@ -44,7 +44,6 @@ class MyActuator(Actuator):
         return self.motor_id, bytes(data)
 
     def build_position_request(self):
-        return None
         return self.BROADCAST_ID, bytes([self.CMD_REQUEST_POSITION] + [0] * 7)
 
     def handle_can_message(self, msg_id: int, data: bytes):
