@@ -58,35 +58,25 @@ async def telemetry_loop(control_socket: ControlSocket, interval: float):
 # -------------------------
 # MOTOR POSITION CAN LOOP
 # -------------------------
-async def position_can_loop(rate_hz: float = 20.0):
-    """
-    Periodically queries motor for absolute multi-turn position using 0x92 command.
-    Updates axis_positions[4] (pitch) in degrees.
-    """
-    global can_client
-
+async def position_can_loop(motor_id: int, rate_hz: float = 20.0):
     interval = 1.0 / rate_hz
-    can_id = 0x280  # example motor CAN ID; adjust to your motor
-
     while True:
         if can_client is not None:
-            # build 0x92 query frame
-            data = bytearray(8)
-            data[0] = 0x92
-            for i in range(1, 8):
-                data[i] = 0x00
-
-            try:
-                # send request and await response
-                response = await can_client.send(can_id, data)
-                if len(response) >= 8 and response[0] == 0x92:
-                    # motorAngle is int32, little endian, unit 0.01 deg
-                    motor_angle_raw = int.from_bytes(response[4:8], "little", signed=True)
-                    axis_positions[4] = motor_angle_raw * 0.01  # convert to degrees
-            except Exception as e:
-                logger.warning(f"Failed to read motor position: {e}")
-
+            data = bytes([0x92] + [0]*7)
+            await can_client.send(motor_id, data)
         await asyncio.sleep(interval)
+
+def motor_position_callback(data: bytes):
+    # Validate data length
+    if len(data) < 8 or data[0] != 0x92:
+        return
+
+    # Read 32-bit motor angle (little-endian, signed)
+    motor_angle_int = int.from_bytes(data[4:8], "little", signed=True)
+    motor_angle_deg = motor_angle_int * 0.01  # 0.01 deg per LSB
+
+    # Update position (for axis_pitch = index 4)
+    axis_positions[4] = motor_angle_deg
 
 # -------------------------
 # HEARTBEAT LOOP
@@ -128,7 +118,7 @@ async def pitch_can_loop(rate_hz: float = 200.0):
             data[3] = 0x00
             data[4:8] = speed_int32.to_bytes(4, "little", signed=True)
 
-            await can_client.send_nowait(0x280, data)
+            await can_client.send(0x280, data)
 
         await asyncio.sleep(interval)
 
@@ -142,6 +132,13 @@ async def main(ws_host: str, ws_port: int, ws_name: str, heartbeat: float, statu
     # Initialize CAN client
     can_client = CANClient()
     await can_client.start()
+
+    can_client.subscribe(0x241, motor_position_callback)
+    can_client.subscribe(0x242, motor_position_callback)
+    can_client.subscribe(0x243, motor_position_callback)
+    can_client.subscribe(0x244, motor_position_callback)
+    can_client.subscribe(0x245, motor_position_callback)
+    can_client.subscribe(0x246, motor_position_callback)
 
     control_socket = ControlSocket(ws_host, ws_port, ws_name, allow_multiple_clients=False)
 

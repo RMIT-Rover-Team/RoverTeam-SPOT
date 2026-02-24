@@ -67,30 +67,19 @@ class CANClient:
                 topic_bytes, data = await self.sub_socket.recv_multipart()
                 msg_id = int(topic_bytes.decode())
                 for cb in self._subscriptions.get(msg_id, []):
-                    if asyncio.iscoroutinefunction(cb):
-                        asyncio.create_task(cb(data))
-                    else:
-                        cb(data)
+                    result = cb(data)
+                    if asyncio.iscoroutine(result):
+                        # fire-and-forget coroutine
+                        asyncio.create_task(result)
+
             except asyncio.CancelledError:
                 break
             except Exception as e:
                 print(f"CANClient receive error: {e}")
                 await asyncio.sleep(0.001)
 
-    # Blocking send (REQ)
-    async def send(self, msg_id: int, data: bytes, timeout: float = 0.1) -> bytes:
-        """
-        Send a CAN message and await a single reply from the daemon.
-        """
-        try:
-            await self.req_socket.send_multipart([str(msg_id).encode(), data])
-            reply = await asyncio.wait_for(self.req_socket.recv(), timeout)
-            return reply
-        except asyncio.TimeoutError:
-            raise RuntimeError("CAN request timed out")
-
     # Fire-and-forget send (PUSH)
-    async def send_nowait(self, msg_id: int, data: bytes):
+    async def send(self, msg_id: int, data: bytes):
         try:
             await self.push_socket.send_multipart([str(msg_id).encode(), data])
         except Exception as e:
