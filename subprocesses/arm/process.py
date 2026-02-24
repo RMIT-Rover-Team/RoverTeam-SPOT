@@ -80,7 +80,7 @@ async def pitch_can_loop(rate_hz: float = 200.0):
             elif value < -1.0:
                 value = -1.0
 
-            speed = axis_targets[4]
+            speed = int(axis_targets[4])
 
             data = bytearray(8)
             data[0] = 0xA2
