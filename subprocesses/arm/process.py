@@ -23,6 +23,8 @@ logger = logging.getLogger()
 logger.setLevel(logging.DEBUG)
 logger.addHandler(JsonHandler())
 
+MOTOR_ID = 0x142
+
 
 # -------------------------
 # ARM STATE
@@ -44,7 +46,6 @@ async def handle_axis(axis_id: int, value: float):
     axis_targets[axis_id] = value
     axis_last_update[axis_id] = time.time()
 
-
 # -------------------------
 # TELEMETRY LOOP
 # -------------------------
@@ -63,7 +64,7 @@ async def position_can_loop(rate_hz: float = 20.0):
     while True:
         if can_client is not None:
             data = bytes([0x92] + [0]*7)
-            await can_client.send(0x141, data)
+            await can_client.send(MOTOR_ID, data)
         await asyncio.sleep(interval)
 
 def motor_position_callback(data: bytes):
@@ -111,7 +112,7 @@ async def pitch_can_loop(rate_hz: float = 200.0):
                 data[4:8] = speed_int32.to_bytes(4, "little", signed=True)
 
                 try:
-                    await can_client.send(0x141, data)
+                    await can_client.send(MOTOR_ID, data)
                 except Exception as e:
                     print(f"[canbus] Error sending pitch: {e}")
 
@@ -128,7 +129,7 @@ async def main(ws_host: str, ws_port: int, ws_name: str, heartbeat: float, statu
     can_client = CANClient()
     await can_client.start()
 
-    can_client.subscribe(0x241, motor_position_callback)
+    can_client.subscribe(MOTOR_ID + 0x100, motor_position_callback)
 
     control_socket = ControlSocket(ws_host, ws_port, ws_name, allow_multiple_clients=False)
 
