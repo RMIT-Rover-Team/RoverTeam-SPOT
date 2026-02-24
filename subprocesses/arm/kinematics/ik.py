@@ -70,14 +70,13 @@ def solve_ik(x: float, y: float, z: float, roll: float, pitch: float, yaw: float
     """
     target_frame = pose_to_matrix(x, y, z, roll, pitch, yaw)
 
-    # IKPy expects a 4x4 matrix passed as 'target' keyword
-    # Also, skip fixed origin link and EE if needed
+    # Use length of active_links_mask to get proper initial_position array
+    n_joints = len(CHAIN.active_links_mask)
     joint_angles_rad = CHAIN.inverse_kinematics(
         target=target_frame,
-        # start from first real joint, skip base fixed link
-        initial_position=[0] * CHAIN.number_of_joints
+        initial_position=[0.0] * n_joints
     )
 
-    # Return only the 6 active joint angles
+    # Return only the 6 active joint angles (skip fixed base link)
     joint_angles_deg = [degrees(a) for a in joint_angles_rad[1:7]]
     return joint_angles_deg
