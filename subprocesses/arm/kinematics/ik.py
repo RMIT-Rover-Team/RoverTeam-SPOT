@@ -46,10 +46,10 @@ def rpy_to_matrix(roll: float, pitch: float, yaw: float) -> np.ndarray:
 def pose_to_matrix(x: float, y: float, z: float, roll: float, pitch: float, yaw: float) -> np.ndarray:
     """
     Build a 4x4 transformation matrix from position (mm) and RPY (degrees).
-    Converts mm to meters for URDF if needed.
+    Converts mm -> meters for URDF.
     """
     mat = rpy_to_matrix(roll, pitch, yaw)
-    mat[0, 3] = x / 1000.0  # convert mm to meters
+    mat[0, 3] = x / 1000.0
     mat[1, 3] = y / 1000.0
     mat[2, 3] = z / 1000.0
     return mat
@@ -68,12 +68,16 @@ def solve_ik(x: float, y: float, z: float, roll: float, pitch: float, yaw: float
     Returns:
         List of 6 joint angles [J1..J6] in degrees
     """
-    target_matrix = pose_to_matrix(x, y, z, roll, pitch, yaw)
+    target_frame = pose_to_matrix(x, y, z, roll, pitch, yaw)
 
-    # Compute IK solution (returns all joints including fixed ones)
-    joint_angles_rad = CHAIN.inverse_kinematics(target_matrix)
+    # IKPy expects a 4x4 matrix passed as 'target' keyword
+    # Also, skip fixed origin link and EE if needed
+    joint_angles_rad = CHAIN.inverse_kinematics(
+        target=target_frame,
+        # start from first real joint, skip base fixed link
+        initial_position=[0] * CHAIN.number_of_joints
+    )
 
-    # Skip the fixed origin link and take only the first 6 active joints (J1..J6)
+    # Return only the 6 active joint angles
     joint_angles_deg = [degrees(a) for a in joint_angles_rad[1:7]]
-
     return joint_angles_deg
