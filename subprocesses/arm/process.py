@@ -63,7 +63,7 @@ async def position_can_loop(rate_hz: float = 20.0):
     while True:
         if can_client is not None:
             data = bytes([0x92] + [0]*7)
-            await can_client.send(0x280, data)
+            await can_client.send(0x141, data)
         await asyncio.sleep(interval)
 
 def motor_position_callback(data: bytes):
@@ -98,24 +98,11 @@ async def pitch_can_loop(rate_hz: float = 200.0):
 
     while True:
         if can_client is not None:
-            # deg/s float
-            value_deg_s = axis_targets[4]
+            speed_int32 = int(axis_targets[4] / 0.01)  # convert deg/s → int32 for CAN
 
-            # clamp physically plausible
-            max_deg_s = 500.0  # example max speed
-            if value_deg_s > max_deg_s:
-                value_deg_s = max_deg_s
-            elif value_deg_s < -max_deg_s:
-                value_deg_s = -max_deg_s
-
-            # Convert to int32 for CAN (0.01 deg/s per LSB)
-            speed_int32 = int(value_deg_s / 0.01)
-
-            # Only send if speed changed
             if speed_int32 != last_sent_speed:
                 last_sent_speed = speed_int32
 
-                # pack message
                 data = bytearray(8)
                 data[0] = 0xA2
                 data[1] = 0xFF
@@ -124,9 +111,9 @@ async def pitch_can_loop(rate_hz: float = 200.0):
                 data[4:8] = speed_int32.to_bytes(4, "little", signed=True)
 
                 try:
-                    await can_client.send_nowait(0x280, data)
+                    await can_client.send(0x141, data)
                 except Exception as e:
-                    print(f"[canbus] Error handling push send: {e}")
+                    print(f"[canbus] Error sending pitch: {e}")
 
         await asyncio.sleep(interval)
 
@@ -142,11 +129,6 @@ async def main(ws_host: str, ws_port: int, ws_name: str, heartbeat: float, statu
     await can_client.start()
 
     can_client.subscribe(0x241, motor_position_callback)
-    can_client.subscribe(0x242, motor_position_callback)
-    can_client.subscribe(0x243, motor_position_callback)
-    can_client.subscribe(0x244, motor_position_callback)
-    can_client.subscribe(0x245, motor_position_callback)
-    can_client.subscribe(0x246, motor_position_callback)
 
     control_socket = ControlSocket(ws_host, ws_port, ws_name, allow_multiple_clients=False)
 
