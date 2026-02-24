@@ -8,6 +8,8 @@ from typing import List
 from sharedlib.controlsocket.controlsocket import ControlSocket
 from sharedlib.controlsocket import schema
 
+from sharedlib.canbus.client import CANClient
+
 # -------------------------
 # LOGGING
 # -------------------------
@@ -33,10 +35,26 @@ axis_last_update: List[float] = [None] * NUM_AXES
 # -------------------------
 # CALLBACK FOR AXES
 # -------------------------
+can_client = CANClient()
+
 async def handle_axis(axis_id: int, value: float):
     axis_targets[axis_id] = value
     axis_last_update[axis_id] = time.time()
-    logger.warning(f"Axis {AXIS_NAMES[axis_id]} set to {value}")
+    logger.debug(f"Axis {AXIS_NAMES[axis_id]} set to {value}")
+
+    if axis_id == 4:  # Only control the pitch axis for this example
+        speed = int(value * 1000)  # Scale to mm/s or mrad/s
+
+        data = bytearray(8)
+        data[0] = 0xA2 # Command ID (Set Closed-Loop Speed)
+        data[1] = 0xFF # Max tourque
+        data[2] = 0x00 # Null
+        data[3] = 0x00 # Null
+
+        # 32-bit little-endian
+        data[4:8] = speed.to_bytes(4, byteorder="little", signed=True)
+
+        await can_client.send(0x280, bytes(data))
 
 # -------------------------
 # TELEMETRY LOOP
