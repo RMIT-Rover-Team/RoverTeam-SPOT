@@ -7,6 +7,13 @@ from typing import List
 
 from sharedlib.controlsocket.controlsocket import ControlSocket
 from sharedlib.controlsocket import schema
+#from sharedlib.payloadControl import pyRover
+
+# -------------------------
+# Connect to the payload
+# -------------------------
+PayloadID = 0xB
+payloadMaster = pyRover.PyRover("can0",1)
 
 # -------------------------
 # LOGGING
@@ -38,16 +45,30 @@ async def handle_axis(axis_id: int, value: float):
     axis_last_update[axis_id] = time.time()
     logger.debug(f"Axis {AXIS_NAMES[axis_id]} set to {value}")
 
+    #Move the joint
+    payloadMaster.SetMotorSpeed(PayloadID, axis_id, value)
+
 # -------------------------
 # TELEMETRY LOOP
 # -------------------------
 async def telemetry_loop(control_socket: ControlSocket, interval: float):
     while True:
-        for i, name in enumerate(AXIS_NAMES):
-            # Update position instantly based on raw input
-            axis_positions[i] += axis_targets[i] * interval
-            await control_socket.outputs.update_output(name, axis_positions[i])
+        #Ping the Arm
+        ArmIsOnline = payloadMaster.ping(PayloadID)
+
+        #If the Arm is online, fetch the axis
+        if ArmIsOnline:
+            for axisID, name in enumerate(AXIS_NAMES):
+                axis_positions[axisID] = payloadMaster.GetMotorPosition(PayloadID, axisID)
+                await control_socket.outputs.update_output(name, axis_positions[axisID])
+        else:
+            logger.error("Payload is Offline")
+
         
+        #for i, name in enumerate(AXIS_NAMES):
+            # Update position instantly based on raw input
+        #    axis_positions[i] += axis_targets[i] * interval
+        #    await control_socket.outputs.update_output(name, axis_positions[i])
         await asyncio.sleep(interval)
 
 # -------------------------
