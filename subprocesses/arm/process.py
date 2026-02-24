@@ -27,7 +27,7 @@ logger.addHandler(JsonHandler())
 # -------------------------
 NUM_AXES = 6
 AXIS_NAMES = ["axis_x", "axis_y", "axis_z", "axis_roll", "axis_pitch", "axis_yaw"]
-AXIS_IDS =   [None,     None,     None,     0x144,       0x142,        0x143     ]  # CAN IDs per axis
+AXIS_IDS =   [None,     None,     None,     0x144,       0x143,        0x142     ]  # CAN IDs per axis
 
 axis_targets: List[float] = [0.0] * NUM_AXES
 axis_positions: List[float] = [0.0] * NUM_AXES
@@ -66,7 +66,7 @@ def make_motor_position_callback(axis_idx: int):
 # -------------------------
 # AXES CAN LOOP (send velocity if changed)
 # -------------------------
-async def axis_can_loop(rate_hz: float = 200.0):
+async def axis_can_loop(rate_hz: float = 20.0):
     global can_client
     interval = 1.0 / rate_hz
 
@@ -154,7 +154,7 @@ async def main(ws_host: str, ws_port: int, ws_name: str, heartbeat: float, statu
     tasks = [
         asyncio.create_task(heartbeat_loop(heartbeat)),
         asyncio.create_task(telemetry_loop(control_socket, status_interval)),
-        asyncio.create_task(axis_can_loop(200.0)),       # 200Hz velocity updates
+        asyncio.create_task(axis_can_loop(20.0)),       # 200Hz velocity updates
         asyncio.create_task(position_request_loop(20.0)), # 20Hz position requests
     ]
 
