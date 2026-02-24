@@ -51,7 +51,7 @@ async def handle_axis(axis_id: int, value: float):
     if axis_id == 4 and can_client is not None:
         logger.warning(f"Setting pitch to {value}")
 
-        speed = int(value * 1000)
+        speed = int(value * 10000)
 
         data = bytearray(8)
         data[0] = 0xA2
