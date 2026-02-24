@@ -49,6 +49,8 @@ async def handle_axis(axis_id: int, value: float):
 
     # Only control pitch axis
     if axis_id == 4 and can_client is not None:
+        logger.warning(f"Setting pitch to {value}")
+
         speed = int(value * 1000)
 
         data = bytearray(8)
@@ -99,7 +101,7 @@ async def main(ws_host: str, ws_port: int, ws_name: str, heartbeat: float, statu
         schema.register_axis(
             control_socket.inputs,
             name,
-            callback=lambda v, axis=i: handle_axis(axis, v),
+            callback=lambda v, axis=i: asyncio.create_task(handle_axis(axis, v)),
         )
         control_socket.outputs.register_output(name)
 
