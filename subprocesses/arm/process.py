@@ -36,7 +36,7 @@ axis_last_update: List[float] = [None] * NUM_AXES
 async def handle_axis(axis_id: int, value: float):
     axis_targets[axis_id] = value
     axis_last_update[axis_id] = time.time()
-    logger.debug(f"Axis {AXIS_NAMES[axis_id]} set to {value}")
+    logger.warning(f"Axis {AXIS_NAMES[axis_id]} set to {value}")
 
 # -------------------------
 # TELEMETRY LOOP
