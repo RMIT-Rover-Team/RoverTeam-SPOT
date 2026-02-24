@@ -164,7 +164,7 @@ class CANDaemon:
                 can_msg = can.Message(arbitration_id=msg_id, data=data, is_extended_id=False)
                 self.bus.send(can_msg)
             except Exception as e:
-                logger.warning("Error handling push send", extra={"error": str(e)})
+                logger.warning(f"Error handling push send: {e}", extra={"error": str(e)})
                 await asyncio.sleep(0.001)
 
     async def stop(self):

@@ -83,7 +83,7 @@ class CANClient:
         try:
             await self.push_socket.send_multipart([str(msg_id).encode(), data])
         except Exception as e:
-            print(f"CANClient fire-and-forget send error: {e}")
+            print(f"CANClient end error: {e}")
 
     def subscribe(self, msg_id: int, callback: Callable[[bytes], None]):
         if msg_id not in self._subscriptions:
