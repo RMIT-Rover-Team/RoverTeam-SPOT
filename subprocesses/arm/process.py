@@ -41,7 +41,7 @@ can_client: CANClient | None = None
 # CALLBACK FOR AXES
 # -------------------------
 async def handle_axis(axis_id: int, value: float):
-    axis_targets[axis_id] = int(value * 0x7FFFFFFF)
+    axis_targets[axis_id] = value
     axis_last_update[axis_id] = time.time()
 
 
@@ -51,8 +51,12 @@ async def handle_axis(axis_id: int, value: float):
 async def telemetry_loop(control_socket: ControlSocket, interval: float):
     while True:
         for i, name in enumerate(AXIS_NAMES):
+            # integrate to get position (deg)
             axis_positions[i] += axis_targets[i] * interval
+            # send both speed (deg/s float) and CAN int32 for debugging
+            speed_int32 = int(axis_targets[i] / 0.01)
             await control_socket.outputs.update_output(name, axis_targets[i])
+            await control_socket.outputs.update_output(f"{name}_can_int", speed_int32)
 
         await asyncio.sleep(interval)
 
@@ -65,6 +69,10 @@ async def heartbeat_loop(interval: float):
         print("HEARTBEAT")
         await asyncio.sleep(interval)
 
+
+# -------------------------
+# PITCH CAN LOOP (fire-and-forget)
+# -------------------------
 async def pitch_can_loop(rate_hz: float = 200.0):
     global can_client
 
@@ -72,22 +80,26 @@ async def pitch_can_loop(rate_hz: float = 200.0):
 
     while True:
         if can_client is not None:
-            value = axis_targets[4]
+            # deg/s float
+            value_deg_s = axis_targets[4]
 
-            # clamp to [-1, 1]
-            if value > 1.0:
-                value = 1.0
-            elif value < -1.0:
-                value = -1.0
+            # clamp physically plausible
+            max_deg_s = 500.0  # example max speed
+            if value_deg_s > max_deg_s:
+                value_deg_s = max_deg_s
+            elif value_deg_s < -max_deg_s:
+                value_deg_s = -max_deg_s
 
-            speed = int(axis_targets[4])
+            # Convert to int32 for CAN (0.01 deg/s per LSB)
+            speed_int32 = int(value_deg_s / 0.01)
 
+            # pack message
             data = bytearray(8)
             data[0] = 0xA2
             data[1] = 0xFF
             data[2] = 0x00
             data[3] = 0x00
-            data[4:8] = speed.to_bytes(4, "little", signed=True)
+            data[4:8] = speed_int32.to_bytes(4, "little", signed=True)
 
             await can_client.send_nowait(0x280, data)
 
