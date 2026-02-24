@@ -26,12 +26,18 @@ class MyActuator(Actuator):
         if self.motor_id is None:
             return None
 
+        # Convert target position to 0.01 deg/LSB
         angle_int32 = int(self.target_position / 0.01)
-        speed_uint16 = 0xFFFF  # max speed
+
+        # Limit maximum speed in deg/s (uint16)
+        speed_uint16 = int(0xFFFF)  # max speed, can adjust if needed
+
+        # Max torque in %, 0-255
+        max_torque = 255  # max torque, can adjust if needed
 
         data = bytearray(8)
-        data[0] = self.CMD_SET_POSITION
-        data[1] = 0x00
+        data[0] = 0xA9          # Force control command
+        data[1] = max_torque
         data[2:4] = speed_uint16.to_bytes(2, "little", signed=False)
         data[4:8] = angle_int32.to_bytes(4, "little", signed=True)
 
