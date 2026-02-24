@@ -56,7 +56,7 @@ async def telemetry_loop(control_socket: ControlSocket, interval: float):
             # send both speed (deg/s float) and CAN int32 for debugging
             speed_int32 = int(axis_targets[i] / 0.01)
             await control_socket.outputs.update_output(name, axis_targets[i])
-            await control_socket.outputs.update_output(f"{name}_can_int", speed_int32)
+            await control_socket.outputs.update_output(name, speed_int32)
 
         await asyncio.sleep(interval)
 
@@ -123,7 +123,7 @@ async def main(ws_host: str, ws_port: int, ws_name: str, heartbeat: float, statu
         schema.register_axis(
             control_socket.inputs,
             name,
-            callback=lambda v, axis=i: asyncio.create_task(handle_axis(axis, v)),
+            callback=lambda v, axis=i: handle_axis(axis, v),
         )
         control_socket.outputs.register_output(name)
 
