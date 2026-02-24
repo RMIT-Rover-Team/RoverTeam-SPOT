@@ -58,22 +58,28 @@ args, unknown_args = parser.parse_known_args()
 # CAN DAEMON
 # -------------------------
 class CANDaemon:
-    def __init__(self, channel, bustype, pub_port, rep_port):
+    def __init__(self, channel, bustype, pub_port, rep_port, pull_port=5560):
         self.ctx = zmq.asyncio.Context()
+
+        # PUB: broadcasts incoming CAN messages
         self.pub = self.ctx.socket(zmq.PUB)
         self.pub.bind(f"tcp://127.0.0.1:{pub_port}")
 
+        # REP: blocking client send
         self.rep = self.ctx.socket(zmq.REP)
         self.rep.bind(f"tcp://127.0.0.1:{rep_port}")
+
+        # PULL: fire-and-forget client send
+        self.pull = self.ctx.socket(zmq.PULL)
+        self.pull.bind(f"tcp://127.0.0.1:{pull_port}")
 
         self._listeners = {}
         self.running = True
         self.state = "DOWN"
 
-        # Try initializing CAN bus
+        # CAN bus init...
         if CAN_AVAILABLE:
             try:
-                # Use new 'interface' argument in python-can >= v4.2
                 self.bus = can.interface.Bus(channel=channel, interface=bustype)
                 self.state = "UP"
                 logger.info("CAN bus initialized", extra={"data": {"channel": channel, "interface": bustype}})
@@ -88,6 +94,7 @@ class CANDaemon:
     async def start(self):
         self.recv_task = asyncio.create_task(self._recv_can_loop())
         self.rep_task = asyncio.create_task(self._rep_loop())
+        self.pull_task = asyncio.create_task(self._pull_loop())
         await asyncio.gather(self.recv_task, self.rep_task)
 
     async def _recv_can_loop(self):
@@ -145,15 +152,31 @@ class CANDaemon:
                 except:
                     pass
 
+    async def _pull_loop(self):
+        """Process fire-and-forget CAN messages from clients (PUSH)"""
+        while self.running:
+            try:
+                msg = await self.pull.recv_multipart()
+                if not self.bus:
+                    continue
+                msg_id = int(msg[0])
+                data = msg[1]
+                can_msg = can.Message(arbitration_id=msg_id, data=data, is_extended_id=False)
+                self.bus.send(can_msg)
+            except Exception as e:
+                logger.warning("Error handling push send", extra={"error": str(e)})
+                await asyncio.sleep(0.001)
+
     async def stop(self):
         self.running = False
         # Cancel tasks with timeout
-        for task in [self.recv_task, self.rep_task]:
+        for task in [self.recv_task, self.rep_task, self.pull_task]:
             if task:
                 task.cancel()
         await asyncio.sleep(0.1)
         self.pub.close()
         self.rep.close()
+        self.pull.close()
         self.ctx.term()
         logger.info("CAN daemon stopped")
 

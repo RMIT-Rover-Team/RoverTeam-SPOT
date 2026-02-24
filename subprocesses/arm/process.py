@@ -89,7 +89,7 @@ async def pitch_can_loop(rate_hz: float = 200.0):
             data[3] = 0x00
             data[4:8] = speed.to_bytes(4, "little", signed=True)
 
-            await can_client.send(0x280, data)
+            await can_client.send_nowait(0x280, data)
 
         await asyncio.sleep(interval)
 
