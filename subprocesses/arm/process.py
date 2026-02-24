@@ -94,6 +94,7 @@ async def pitch_can_loop(rate_hz: float = 200.0):
     global can_client
 
     interval = 1.0 / rate_hz
+    last_sent_speed: int | None = None
 
     while True:
         if can_client is not None:
@@ -110,15 +111,22 @@ async def pitch_can_loop(rate_hz: float = 200.0):
             # Convert to int32 for CAN (0.01 deg/s per LSB)
             speed_int32 = int(value_deg_s / 0.01)
 
-            # pack message
-            data = bytearray(8)
-            data[0] = 0xA2
-            data[1] = 0xFF
-            data[2] = 0x00
-            data[3] = 0x00
-            data[4:8] = speed_int32.to_bytes(4, "little", signed=True)
+            # Only send if speed changed
+            if speed_int32 != last_sent_speed:
+                last_sent_speed = speed_int32
 
-            await can_client.send(0x280, data)
+                # pack message
+                data = bytearray(8)
+                data[0] = 0xA2
+                data[1] = 0xFF
+                data[2] = 0x00
+                data[3] = 0x00
+                data[4:8] = speed_int32.to_bytes(4, "little", signed=True)
+
+                try:
+                    await can_client.send_nowait(0x280, data)
+                except Exception as e:
+                    print(f"[canbus] Error handling push send: {e}")
 
         await asyncio.sleep(interval)
 
