@@ -158,8 +158,8 @@ async def main(
         )
     
     for actuator in ACTUATORS:
-        schema.register_output(control_socket.outputs, f"{actuator.name}_pos")
-        schema.register_output(control_socket.outputs, f"{actuator.name}_vel")
+        control_socket.outputs.register_output(f"{actuator.name}_pos")
+        control_socket.outputs.register_output(f"{actuator.name}_vel")
 
     await control_socket.start()
     logger.info(f"ControlSocket running on ws://{ws_host}:{ws_port} as '{ws_name}'")
