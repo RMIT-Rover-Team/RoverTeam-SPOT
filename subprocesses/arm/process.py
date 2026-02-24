@@ -41,26 +41,8 @@ can_client: CANClient | None = None
 # CALLBACK FOR AXES
 # -------------------------
 async def handle_axis(axis_id: int, value: float):
-    global can_client
-
     axis_targets[axis_id] = value
     axis_last_update[axis_id] = time.time()
-    logger.debug(f"Axis {AXIS_NAMES[axis_id]} set to {value}")
-
-    # Only control pitch axis
-    if axis_id == 4 and can_client is not None:
-        logger.warning(f"Setting pitch to {value}")
-
-        speed = int(value * 0x7FFFFFFF)  # Scale to int32 range
-
-        data = bytearray(8)
-        data[0] = 0xA2
-        data[1] = 0xFF
-        data[2] = 0x00
-        data[3] = 0x00
-        data[4:8] = speed.to_bytes(4, byteorder="little", signed=True)
-
-        await can_client.send(0x280, bytes(data))
 
 
 # -------------------------
@@ -83,6 +65,34 @@ async def heartbeat_loop(interval: float):
         print("HEARTBEAT")
         await asyncio.sleep(interval)
 
+async def pitch_can_loop(rate_hz: float = 200.0):
+    global can_client
+
+    interval = 1.0 / rate_hz
+
+    while True:
+        if can_client is not None:
+            value = axis_targets[4]
+
+            # clamp to [-1, 1]
+            if value > 1.0:
+                value = 1.0
+            elif value < -1.0:
+                value = -1.0
+
+            speed = int(value * 0x7FFFFFFF)
+
+            data = bytearray(8)
+            data[0] = 0xA2
+            data[1] = 0xFF
+            data[2] = 0x00
+            data[3] = 0x00
+            data[4:8] = speed.to_bytes(4, "little", signed=True)
+
+            await can_client.send(0x280, data)
+
+        await asyncio.sleep(interval)
+
 
 # -------------------------
 # MAIN
@@ -101,7 +111,7 @@ async def main(ws_host: str, ws_port: int, ws_name: str, heartbeat: float, statu
         schema.register_axis(
             control_socket.inputs,
             name,
-            callback=lambda v, axis=i: asyncio.create_task(handle_axis(axis, v)),
+            callback=lambda v, axis=i: handle_axis(axis, v),
         )
         control_socket.outputs.register_output(name)
 
@@ -111,6 +121,7 @@ async def main(ws_host: str, ws_port: int, ws_name: str, heartbeat: float, statu
     tasks = [
         asyncio.create_task(heartbeat_loop(heartbeat)),
         asyncio.create_task(telemetry_loop(control_socket, status_interval)),
+        asyncio.create_task(pitch_can_loop(200.0)),  # 200Hz control
     ]
 
     try:
