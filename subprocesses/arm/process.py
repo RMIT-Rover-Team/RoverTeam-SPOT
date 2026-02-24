@@ -58,12 +58,12 @@ async def telemetry_loop(control_socket: ControlSocket, interval: float):
 # -------------------------
 # MOTOR POSITION CAN LOOP
 # -------------------------
-async def position_can_loop(motor_id: int, rate_hz: float = 20.0):
+async def position_can_loop(rate_hz: float = 20.0):
     interval = 1.0 / rate_hz
     while True:
         if can_client is not None:
             data = bytes([0x92] + [0]*7)
-            await can_client.send(motor_id, data)
+            await can_client.send(0x280, data)
         await asyncio.sleep(interval)
 
 def motor_position_callback(data: bytes):
