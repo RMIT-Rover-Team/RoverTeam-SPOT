@@ -100,7 +100,7 @@ async def telemetry_loop(control_socket: ControlSocket, interval: float):
         # send telemetry
         for actuator in ACTUATORS:
             pos = actuator.target_position
-            vel = actuator.get_target_velocity()
+            vel = actuator.get_velocity()
             await control_socket.outputs.update_output(f"{actuator.name}_pos", pos)
             await control_socket.outputs.update_output(f"{actuator.name}_vel", vel)
 
