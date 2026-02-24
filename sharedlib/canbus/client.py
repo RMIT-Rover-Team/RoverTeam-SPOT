@@ -78,12 +78,16 @@ class CANClient:
                 await asyncio.sleep(0.001)
 
     # Blocking send (REQ)
-    async def send(self, msg_id: int, data: bytes):
+    async def send(self, msg_id: int, data: bytes, timeout: float = 0.1) -> bytes:
+        """
+        Send a CAN message and await a single reply from the daemon.
+        """
         try:
             await self.req_socket.send_multipart([str(msg_id).encode(), data])
-            await self.req_socket.recv()
-        except Exception as e:
-            print(f"CANClient send error: {e}")
+            reply = await asyncio.wait_for(self.req_socket.recv(), timeout)
+            return reply
+        except asyncio.TimeoutError:
+            raise RuntimeError("CAN request timed out")
 
     # Fire-and-forget send (PUSH)
     async def send_nowait(self, msg_id: int, data: bytes):

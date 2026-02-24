@@ -51,10 +51,42 @@ async def handle_axis(axis_id: int, value: float):
 async def telemetry_loop(control_socket: ControlSocket, interval: float):
     while True:
         for i, name in enumerate(AXIS_NAMES):
-            await control_socket.outputs.update_output(name, axis_targets[i])
-
+            await control_socket.outputs.update_output(f"{name}_vel", axis_targets[i])
+            await control_socket.outputs.update_output(f"{name}_pos", axis_positions[i])
         await asyncio.sleep(interval)
 
+# -------------------------
+# MOTOR POSITION CAN LOOP
+# -------------------------
+async def position_can_loop(rate_hz: float = 20.0):
+    """
+    Periodically queries motor for absolute multi-turn position using 0x92 command.
+    Updates axis_positions[4] (pitch) in degrees.
+    """
+    global can_client
+
+    interval = 1.0 / rate_hz
+    can_id = 0x280  # example motor CAN ID; adjust to your motor
+
+    while True:
+        if can_client is not None:
+            # build 0x92 query frame
+            data = bytearray(8)
+            data[0] = 0x92
+            for i in range(1, 8):
+                data[i] = 0x00
+
+            try:
+                # send request and await response
+                response = await can_client.send(can_id, data)
+                if len(response) >= 8 and response[0] == 0x92:
+                    # motorAngle is int32, little endian, unit 0.01 deg
+                    motor_angle_raw = int.from_bytes(response[4:8], "little", signed=True)
+                    axis_positions[4] = motor_angle_raw * 0.01  # convert to degrees
+            except Exception as e:
+                logger.warning(f"Failed to read motor position: {e}")
+
+        await asyncio.sleep(interval)
 
 # -------------------------
 # HEARTBEAT LOOP
@@ -120,7 +152,8 @@ async def main(ws_host: str, ws_port: int, ws_name: str, heartbeat: float, statu
             name,
             callback=lambda v, axis=i: handle_axis(axis, v),
         )
-        control_socket.outputs.register_output(name)
+        control_socket.outputs.register_output(f"{name}_vel")
+        control_socket.outputs.register_output(f"{name}_pos")
 
     await control_socket.start()
     logger.info(f"ControlSocket running on ws://{ws_host}:{ws_port} as '{ws_name}'")
@@ -129,6 +162,7 @@ async def main(ws_host: str, ws_port: int, ws_name: str, heartbeat: float, statu
         asyncio.create_task(heartbeat_loop(heartbeat)),
         asyncio.create_task(telemetry_loop(control_socket, status_interval)),
         asyncio.create_task(pitch_can_loop(200.0)),  # 200Hz control
+        asyncio.create_task(position_can_loop(20.0)),  # 20Hz position feedback
     ]
 
     try:
