@@ -1,18 +1,21 @@
 # kinematics/ik.py
 import os
-
 import numpy as np
 from ikpy.chain import Chain
-from ikpy.link import OriginLink
-from math import radians
-from typing import List, Tuple
+from math import radians, degrees
+from typing import List
 
-# Load the URDF
-CHAIN = Chain.from_urdf_file(os.path.join(os.path.dirname(__file__), "arm.urdf"))
+# -------------------------
+# Load the URDF chain
+# -------------------------
+URDF_PATH = os.path.join(os.path.dirname(__file__), "arm.urdf")
+CHAIN = Chain.from_urdf_file(URDF_PATH)
 
-# IKPy expects target as 4x4 transformation matrix
+# -------------------------
+# Helpers: RPY to 4x4 matrix
+# -------------------------
 def rpy_to_matrix(roll: float, pitch: float, yaw: float) -> np.ndarray:
-    """Convert roll, pitch, yaw (degrees) to 4x4 rotation matrix"""
+    """Convert roll, pitch, yaw (degrees) to 4x4 rotation matrix."""
     roll = radians(roll)
     pitch = radians(pitch)
     yaw = radians(yaw)
@@ -41,25 +44,36 @@ def rpy_to_matrix(roll: float, pitch: float, yaw: float) -> np.ndarray:
     return Rz @ Ry @ Rx
 
 def pose_to_matrix(x: float, y: float, z: float, roll: float, pitch: float, yaw: float) -> np.ndarray:
-    """Build a 4x4 transformation matrix from xyz and RPY"""
+    """
+    Build a 4x4 transformation matrix from position (mm) and RPY (degrees).
+    Converts mm to meters for URDF if needed.
+    """
     mat = rpy_to_matrix(roll, pitch, yaw)
-    mat[0, 3] = x / 1000  # convert mm to meters if URDF is in meters
-    mat[1, 3] = y / 1000
-    mat[2, 3] = z / 1000
+    mat[0, 3] = x / 1000.0  # convert mm to meters
+    mat[1, 3] = y / 1000.0
+    mat[2, 3] = z / 1000.0
     return mat
 
+# -------------------------
+# IK Solver
+# -------------------------
 def solve_ik(x: float, y: float, z: float, roll: float, pitch: float, yaw: float) -> List[float]:
     """
     Solve IK for the arm.
 
-    Returns a list of 6 joint angles in degrees [J1..J6]
+    Args:
+        x, y, z: target position in mm
+        roll, pitch, yaw: target orientation in degrees
+
+    Returns:
+        List of 6 joint angles [J1..J6] in degrees
     """
     target_matrix = pose_to_matrix(x, y, z, roll, pitch, yaw)
 
-    # Compute IK solution
+    # Compute IK solution (returns all joints including fixed ones)
     joint_angles_rad = CHAIN.inverse_kinematics(target_matrix)
 
-    # IKPy returns angles including the fixed origin link, so skip it
-    # Also only take the first 6 joints corresponding to J1..J6
-    joint_angles_deg = [np.degrees(a) for a in joint_angles_rad[1:7]]
+    # Skip the fixed origin link and take only the first 6 active joints (J1..J6)
+    joint_angles_deg = [degrees(a) for a in joint_angles_rad[1:7]]
+
     return joint_angles_deg
