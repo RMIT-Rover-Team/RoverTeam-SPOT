@@ -52,14 +52,15 @@ async def canbus_telemetry_loop(can_port, ws_port):
     bus = WrappedCanbus(can_port)
     telemetry_server = CanTelemetryServer()
 
+    telemetry_ids = {0x03, 0x04, 0x05}
     async with websockets.serve(telemetry_server.handle_connection, "0.0.0.0", ws_port):
         logger.info(f"CAN Polling active: {can_port} -> WS:{ws_port}")
 
         while True:
-            frame = bus.read_msg()
+            frame = bus.read_msg_from(telemetry_ids, 0xFFF)
 
             if frame:
-                asyncio.create_task(telemetry_server.broadcast(frame))
+                asyncio.create_task(telemetry_server.__broadcast(frame))
             else:
                 await asyncio.sleep(0.001)
 
