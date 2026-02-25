@@ -145,47 +145,64 @@ class RobotArm6DOF:
         my = zw - self.d1
         m = math.sqrt(mx**2 + my**2)
 
-        # ---- Handle out-of-reach gracefully ----
-        max_reach = self.a2 + self.l
-        if m > max_reach:
+        # ---- Handle planar reach ----
+        min_reach = abs(self.l - self.a2)
+        max_reach = self.l + self.a2
+        if m < min_reach:
             success = False
-            # Scale down vector to max reach
+            scale = min_reach / m if m != 0 else 0
+            mx *= scale
+            my *= scale
+            m = min_reach
+        elif m > max_reach:
+            success = False
             scale = max_reach / m
             mx *= scale
             my *= scale
             m = max_reach
-            # update achievable wrist position
-            xw = mx + self.a1
-            yw = yw / x_prime * (mx + self.a1) if x_prime != 0 else 0
-            zw = my + self.d1
 
-        achievable_pos = (xw, yw, zw)
+        # Update achievable wrist position
+        achievable_xw = mx + self.a1
+        achievable_yw = yw / x_prime * (mx + self.a1) if x_prime != 0 else 0
+        achievable_zw = my + self.d1
+        achievable_pos = (achievable_xw, achievable_yw, achievable_zw)
 
         alpha = math.atan2(my, mx)
 
         def safe_acos(val):
             return math.acos(max(-1.0, min(1.0, val)))
 
-        gamma = safe_acos((self.l**2 + self.a2**2 - m**2) / (2*self.l*self.a2))
-        beta  = safe_acos((m**2 + self.a2**2 - self.l**2) / (2*m*self.a2))
+        # Compute angles with clamping
+        try:
+            gamma = safe_acos((self.l**2 + self.a2**2 - m**2) / (2*self.l*self.a2))
+            beta  = safe_acos((m**2 + self.a2**2 - self.l**2) / (2*m*self.a2))
+        except ValueError:
+            success = False
+            gamma = math.pi/2
+            beta = math.pi/2
 
         q2 = math.pi/2 - beta - alpha
         q3 = -(gamma - self.phi)
 
-        # ---- R36 ----
-        R03 = self.forward_kin([q1, q2, q3, 0, 0, 0])[3]
-        R36 = R03.T @ R0g
+        # ---- Orientation for wrist ----
+        try:
+            R03 = self.forward_kin([q1, q2, q3, 0, 0, 0])[3]
+            R36 = R03.T @ R0g
 
-        q4 = math.atan2(R36[2, 2], -R36[0, 2])
-        q5 = math.atan2(
-            math.sqrt(R36[0, 2]**2 + R36[2, 2]**2),
-            R36[1, 2]
-        )
-        q6 = math.atan2(-R36[1, 1], R36[1, 0])
+            q4 = math.atan2(R36[2, 2], -R36[0, 2])
+            q5 = math.atan2(
+                math.sqrt(R36[0, 2]**2 + R36[2, 2]**2),
+                R36[1, 2]
+            )
+            q6 = math.atan2(-R36[1, 1], R36[1, 0])
+        except Exception:
+            # fallback if wrist orientation fails
+            success = False
+            q4 = q5 = q6 = 0.0
 
         q = [q1, q2, q3, q4, q5, q6]
 
-        # Apply direction flips
+        # Apply joint direction flips
         q = [q[i] * self.joint_directions[i] for i in range(6)]
 
         return q, success, achievable_pos
