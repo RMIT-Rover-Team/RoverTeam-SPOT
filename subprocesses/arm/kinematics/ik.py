@@ -101,35 +101,17 @@ class RobotArm6DOF:
 
     def inverse_kin(self, x, y, z, roll, pitch, yaw):
         """
-        Compute inverse kinematics for a 6DOF robot arm.
+        Inverse kinematics for 6DOF robot.
 
-        Args:
-            x, y, z: target end-effector position in mm
-            roll, pitch, yaw: target orientation in radians
-
-        Returns:
-            q: list of 6 joint angles in radians (after direction flips)
-            success: bool, True if target reachable, False if clamped
-            achievable_pos: tuple (x, y, z) of actual reachable wrist center
+        Uses input position unless it's unreachable, then clamps to max reach.
         """
+
         success = True
 
         # ---- Rotation matrix from Euler (ZYX) ----
-        R_x = np.array([
-            [1, 0, 0],
-            [0, math.cos(roll), -math.sin(roll)],
-            [0, math.sin(roll),  math.cos(roll)]
-        ])
-        R_y = np.array([
-            [math.cos(pitch), 0, math.sin(pitch)],
-            [0, 1, 0],
-            [-math.sin(pitch), 0, math.cos(pitch)]
-        ])
-        R_z = np.array([
-            [math.cos(yaw), -math.sin(yaw), 0],
-            [math.sin(yaw),  math.cos(yaw), 0],
-            [0, 0, 1]
-        ])
+        R_x = np.array([[1,0,0],[0,math.cos(roll),-math.sin(roll)],[0,math.sin(roll),math.cos(roll)]])
+        R_y = np.array([[math.cos(pitch),0,math.sin(pitch)],[0,1,0],[-math.sin(pitch),0,math.cos(pitch)]])
+        R_z = np.array([[math.cos(yaw),-math.sin(yaw),0],[math.sin(yaw),math.cos(yaw),0],[0,0,1]])
         R0g = R_z @ R_y @ R_x
 
         # ---- Wrist center ----
@@ -138,29 +120,28 @@ class RobotArm6DOF:
         yw = y - self.d7 * ny
         zw = z - self.d7 * nz
 
-        print(f"[IK DEBUG] Wrist center before clamping: x={xw:.3f}, y={yw:.3f}, z={zw:.3f}")
-
-        # ---- Planar distance for first 3 joints ----
+        # ---- Distance in plane for first 3 joints ----
         x_prime = math.sqrt(xw**2 + yw**2)
         mx = x_prime - self.a1
         my = zw - self.d1
         m = math.sqrt(mx**2 + my**2)
 
-        # ---- Clamp to max reach ----
         max_reach = self.a2 + self.l
         if m > max_reach:
             success = False
             scale = max_reach / m
             mx *= scale
             my *= scale
-            # Update achievable wrist position
             xw = (mx + self.a1) * (xw / x_prime) if x_prime != 0 else 0.0
             yw = (mx + self.a1) * (yw / x_prime) if x_prime != 0 else 0.0
             zw = my + self.d1
+            print(f"[IK DEBUG] Target unreachable, clamping wrist to: x={xw:.3f}, y={yw:.3f}, z={zw:.3f}")
+        else:
+            print(f"[IK DEBUG] Wrist center OK: x={xw:.3f}, y={yw:.3f}, z={zw:.3f}")
 
         achievable_pos = (xw, yw, zw)
 
-        # ---- First 3 joints (q1,q2,q3) ----
+        # ---- First 3 joints ----
         def safe_acos(val):
             return math.acos(max(-1.0, min(1.0, val)))
 
@@ -172,27 +153,20 @@ class RobotArm6DOF:
         q2 = math.pi/2 - beta - alpha
         q3 = -(gamma - self.phi)
 
-        # ---- Wrist orientation (q4,q5,q6) ----
+        # ---- Wrist orientation ----
         try:
-            # Ensure R03 is a proper NumPy array
             _, _, _, R03 = self.forward_kin([q1, q2, q3, 0, 0, 0])
             R03 = np.array(R03, dtype=np.float64)
             R36 = R03.T @ R0g
-
-            q4 = math.atan2(float(R36[2, 2]), -float(R36[0, 2]))
-            q5 = math.atan2(
-                math.sqrt(float(R36[0, 2])**2 + float(R36[2, 2])**2),
-                float(R36[1, 2])
-            )
-            q6 = math.atan2(-float(R36[1, 1]), float(R36[1, 0]))
+            q4 = math.atan2(float(R36[2,2]), -float(R36[0,2]))
+            q5 = math.atan2(math.sqrt(float(R36[0,2])**2 + float(R36[2,2])**2), float(R36[1,2]))
+            q6 = math.atan2(-float(R36[1,1]), float(R36[1,0]))
         except Exception as e:
-            # Fallback if orientation unreachable
-            print(f"[IK DEBUG] Orientation fallback triggered: {e}")
             success = False
             q4 = q5 = q6 = 0.0
+            print(f"[IK DEBUG] Orientation fallback triggered: {e}")
 
-        # ---- Combine joints and apply direction flips ----
-        q = [q1, q2, q3, q4, q5, q6]
+        q = [q1,q2,q3,q4,q5,q6]
         q = [q[i] * self.joint_directions[i] for i in range(6)]
 
         print(f"[IK DEBUG] q1={math.degrees(q1):.1f}, q2={math.degrees(q2):.1f}, q3={math.degrees(q3):.1f}")
