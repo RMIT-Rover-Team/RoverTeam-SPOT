@@ -1,54 +1,168 @@
-# kinematics/ik.py
-import os
-from math import radians
-from typing import List
-
 import numpy as np
-from ikpy.chain import Chain
+import math
+from sympy import symbols, Matrix, sin, cos, atan2, sqrt, pi
 
-# -------------------------
-# Load URDF
-# -------------------------
-CHAIN = Chain.from_urdf_file(
-    os.path.join(os.path.dirname(__file__), "arm.urdf"),
-    base_elements=["base_link"],
-    last_link_vector=[0, 0, 0.02]
-)
 
-# -------------------------
-# Utility: RPY -> 4x4 rotation
-# -------------------------
-def rpy_to_matrix(roll: float, pitch: float, yaw: float) -> np.ndarray:
-    r, p, y = map(radians, (roll, pitch, yaw))
-    Rx = np.array([[1,0,0,0],[0,np.cos(r),-np.sin(r),0],[0,np.sin(r),np.cos(r),0],[0,0,0,1]])
-    Ry = np.array([[np.cos(p),0,np.sin(p),0],[0,1,0,0],[-np.sin(p),0,np.cos(p),0],[0,0,0,1]])
-    Rz = np.array([[np.cos(y),-np.sin(y),0,0],[np.sin(y),np.cos(y),0,0],[0,0,1,0],[0,0,0,1]])
-    return Rz @ Ry @ Rx
+class RobotArm6DOF:
 
-# -------------------------
-# Pose -> 4x4 matrix
-# -------------------------
-def pose_to_matrix(x: float, y: float, z: float, roll: float, pitch: float, yaw: float) -> np.ndarray:
-    mat = rpy_to_matrix(roll, pitch, yaw)
-    mat[0, 3] = x / 1000  # mm -> m
-    mat[1, 3] = y / 1000
-    mat[2, 3] = z / 1000
-    return mat
+    def __init__(
+        self,
+        d1,
+        a1,
+        a2,
+        a3,
+        d4,
+        d7,
+        alpha_vals=None,
+        joint_directions=None
+    ):
+        """
+        Define full robot geometry here.
 
-# -------------------------
-# Solve IK
-# -------------------------
-def solve_ik(x: float, y: float, z: float, roll: float, pitch: float, yaw: float) -> List[float]:
-    target_frame = pose_to_matrix(x, y, z, roll, pitch, yaw)
-    n_joints = len(CHAIN.links)
+        All units in meters.
+        All angles in radians.
+        """
 
-    # Use IKPy full-frame solver
-    joint_angles_rad = CHAIN.inverse_kinematics_frame(
-        target_frame,
-        initial_position=[0.0] * n_joints,
-        max_iter=100
-    )
+        # ---- Link dimensions ----
+        self.d1 = d1
+        self.a1 = a1
+        self.a2 = a2
+        self.a3 = a3
+        self.d4 = d4
+        self.d7 = d7
 
-    # Only the 6 active joints (skip base/fixed links)
-    joint_angles_deg = [np.degrees(a) for a in joint_angles_rad[1:7]]
-    return joint_angles_deg
+        # Derived triangle geometry
+        self.l = math.sqrt(d4**2 + a3**2)
+        self.phi = math.atan2(d4, abs(a3)) if a3 != 0 else math.pi/2
+
+        # ---- DH twist angles ----
+        # Default matches your original model
+        if alpha_vals is None:
+            self.alpha_vals = [
+                0,
+                -math.pi/2,
+                0,
+                -math.pi/2,
+                math.pi/2,
+                -math.pi/2
+            ]
+        else:
+            self.alpha_vals = alpha_vals
+
+        # ---- Joint direction flips ----
+        # Use -1 if a motor is mounted reversed
+        if joint_directions is None:
+            self.joint_directions = [1, 1, 1, 1, 1, 1]
+        else:
+            self.joint_directions = joint_directions
+
+    # ======================================================
+    # DH Transform
+    # ======================================================
+
+    def pose(self, theta, alpha, a, d):
+        return Matrix([
+            [cos(theta), -sin(theta), 0, a],
+            [sin(theta)*cos(alpha), cos(theta)*cos(alpha), -sin(alpha), -d*sin(alpha)],
+            [sin(theta)*sin(alpha), cos(theta)*sin(alpha),  cos(alpha),  d*cos(alpha)],
+            [0, 0, 0, 1]
+        ])
+
+    # ======================================================
+    # Forward Kinematics
+    # ======================================================
+
+    def forward_kin(self, q):
+
+        q = [q[i] * self.joint_directions[i] for i in range(6)]
+        d90 = pi/2
+
+        T01 = self.pose(q[0], self.alpha_vals[0], 0, self.d1)
+        T12 = self.pose(q[1] - d90, self.alpha_vals[1], self.a1, 0)
+        T23 = self.pose(q[2], self.alpha_vals[2], self.a2, 0)
+        T34 = self.pose(q[3], self.alpha_vals[3], self.a3, self.d4)
+        T45 = self.pose(q[4], self.alpha_vals[4], 0, 0)
+        T56 = self.pose(q[5], self.alpha_vals[5], 0, 0)
+        T6g = self.pose(0, 0, 0, self.d7)
+
+        T = T01 * T12 * T23 * T34 * T45 * T56 * T6g
+
+        px = float(T[0, 3])
+        py = float(T[1, 3])
+        pz = float(T[2, 3])
+
+        R = np.array(T[:3, :3]).astype(np.float64)
+
+        return px, py, pz, R
+
+    # ======================================================
+    # Inverse Kinematics
+    # ======================================================
+
+    def inverse_kin(self, x, y, z, roll, pitch, yaw):
+
+        # Rotation matrix from Euler (ZYX)
+        R_x = np.array([
+            [1, 0, 0],
+            [0, math.cos(roll), -math.sin(roll)],
+            [0, math.sin(roll), math.cos(roll)]
+        ])
+
+        R_y = np.array([
+            [math.cos(pitch), 0, math.sin(pitch)],
+            [0, 1, 0],
+            [-math.sin(pitch), 0, math.cos(pitch)]
+        ])
+
+        R_z = np.array([
+            [math.cos(yaw), -math.sin(yaw), 0],
+            [math.sin(yaw),  math.cos(yaw), 0],
+            [0, 0, 1]
+        ])
+
+        R0g = R_z @ R_y @ R_x
+
+        # ---- Wrist center ----
+        nx, ny, nz = R0g[:, 2]
+        xw = x - self.d7 * nx
+        yw = y - self.d7 * ny
+        zw = z - self.d7 * nz
+
+        # ---- First 3 joints ----
+        q1 = math.atan2(yw, xw)
+
+        x_prime = math.sqrt(xw**2 + yw**2)
+        mx = x_prime - self.a1
+        my = zw - self.d1
+        m = math.sqrt(mx**2 + my**2)
+
+        alpha = math.atan2(my, mx)
+
+        gamma = math.acos(
+            (self.l**2 + self.a2**2 - m**2) / (2*self.l*self.a2)
+        )
+
+        beta = math.acos(
+            (m**2 + self.a2**2 - self.l**2) / (2*m*self.a2)
+        )
+
+        q2 = math.pi/2 - beta - alpha
+        q3 = -(gamma - self.phi)
+
+        # ---- R36 ----
+        R03 = self.forward_kin([q1, q2, q3, 0, 0, 0])[3]
+        R36 = R03.T @ R0g
+
+        q4 = math.atan2(R36[2, 2], -R36[0, 2])
+        q5 = math.atan2(
+            math.sqrt(R36[0, 2]**2 + R36[2, 2]**2),
+            R36[1, 2]
+        )
+        q6 = math.atan2(-R36[1, 1], R36[1, 0])
+
+        q = [q1, q2, q3, q4, q5, q6]
+
+        # Apply direction flips
+        q = [q[i] * self.joint_directions[i] for i in range(6)]
+
+        return q

@@ -3,6 +3,7 @@ import argparse
 import json
 import logging
 import time
+import math
 from typing import Dict
 
 from sharedlib.controlsocket.controlsocket import ControlSocket
@@ -13,7 +14,9 @@ from sharedlib.actuator.actuator_manager import ActuatorManager
 from sharedlib.actuator.myactuator import MyActuator
 from sharedlib.actuator.dummyactuator import DummyActuator
 
-from kinematics.ik import solve_ik  # our IK solver
+from kinematics.ik import RobotArm6DOF
+from kinematics.util import closest_equivalent_angle
+
 
 # -------------------------
 # LOGGING
@@ -23,15 +26,29 @@ class JsonHandler(logging.StreamHandler):
         log_obj = {"level": record.levelname, "msg": record.getMessage()}
         print(json.dumps(log_obj), flush=True)
 
+
 logger = logging.getLogger()
 logger.setLevel(logging.DEBUG)
 logger.addHandler(JsonHandler())
 
+
 # -------------------------
-# ACTUATOR LIST
+# ROBOT GEOMETRY (DEFINE YOUR ARM HERE)
 # -------------------------
-# J1,2,3 are dummy (cartesian integrators)
-# J4,5,6 are MyActuator
+robot = RobotArm6DOF(
+    d1=0.020,        # base to J2
+    a1=0.0,          # no horizontal offset
+    a2=0.400,        # link2
+    a3=0.400,        # link3
+    d4=0.020,        # wrist offset
+    d7=0.060,        # final tool length
+    joint_directions=[1, 1, 1, 1, 1, 1],
+)
+
+
+# -------------------------
+# ACTUATORS
+# -------------------------
 ACTUATORS = [
     MyActuator("J1", 0x142),
     MyActuator("J2", 0x143),
@@ -41,18 +58,34 @@ ACTUATORS = [
     DummyActuator("J6"),
 ]
 
-# -------------------------
-# GLOBAL STATE
-# -------------------------
 actuators: Dict[str, object] = {}
 manager: ActuatorManager | None = None
 
-# Desired end-effector position in mm and degrees
-desired_position = {"x": 400.0, "y": 0.0, "z": 200.0, "roll": 0.0, "pitch": 0.0, "yaw": 0.0}
-last_time = time.time()
 
-# Velocity inputs in mm/s or deg/s (from control socket)
-velocity_inputs = {"x": 0.0, "y": 0.0, "z": 0.0, "roll": 0.0, "pitch": 0.0, "yaw": 0.0}
+# -------------------------
+# GLOBAL STATE
+# -------------------------
+# Desired end-effector pose (mm + degrees externally)
+desired_position = {
+    "x": 400.0,
+    "y": 0.0,
+    "z": 200.0,
+    "roll": 0.0,
+    "pitch": 0.0,
+    "yaw": 0.0,
+}
+
+velocity_inputs = {
+    "x": 0.0,
+    "y": 0.0,
+    "z": 0.0,
+    "roll": 0.0,
+    "pitch": 0.0,
+    "yaw": 0.0,
+}
+
+last_time = time.time()
+last_joint_targets = [0.0] * 6
 
 # -------------------------
 # AXIS CALLBACK
@@ -60,50 +93,72 @@ velocity_inputs = {"x": 0.0, "y": 0.0, "z": 0.0, "roll": 0.0, "pitch": 0.0, "yaw
 async def handle_axis(axis_name: str, value: float):
     velocity_inputs[axis_name] = value
 
+
 # -------------------------
 # TELEMETRY + IK LOOP
 # -------------------------
 async def telemetry_loop(control_socket: ControlSocket, interval: float):
     global last_time
+
     while True:
         now = time.time()
         dt = now - last_time
         last_time = now
 
-        # integrate velocity inputs to desired position
-        desired_position["x"] += velocity_inputs["x"] * dt
-        desired_position["y"] += velocity_inputs["y"] * dt
-        desired_position["z"] += velocity_inputs["z"] * dt
-        desired_position["roll"] += velocity_inputs["roll"] * dt
-        desired_position["pitch"] += velocity_inputs["pitch"] * dt
-        desired_position["yaw"] += velocity_inputs["yaw"] * dt
+        # integrate velocities (mm/s and deg/s)
+        for key in desired_position.keys():
+            desired_position[key] += velocity_inputs[key] * dt
 
-        # compute IK for desired position
-        joint_angles = solve_ik(
-            desired_position["x"],
-            desired_position["y"],
-            desired_position["z"],
-            desired_position["roll"],
-            desired_position["pitch"],
-            desired_position["yaw"]
-        )
+        # ---- Convert units for IK ----
+        x = desired_position["x"] / 1000.0
+        y = desired_position["y"] / 1000.0
+        z = desired_position["z"] / 1000.0
 
-        # apply angles to actuators
-        for actuator, angle in zip(ACTUATORS, joint_angles):
+        roll = math.radians(desired_position["roll"])
+        pitch = math.radians(desired_position["pitch"])
+        yaw = math.radians(desired_position["yaw"])
 
-            #debug logging
-            logger.debug(f"Setting {actuator.name} to {angle:.2f} degrees")
+        try:
+            joint_angles_rad = robot.inverse_kin(x, y, z, roll, pitch, yaw)
+        except Exception as e:
+            logger.error(f"IK failed: {e}")
+            await asyncio.sleep(interval)
+            continue
 
-            actuator.set_position(angle)
+        # Convert radians → degrees for actuators
+        joint_angles_deg = [
+            math.degrees(a) if not math.isnan(a) else 0.0
+            for a in joint_angles_rad
+        ]
 
-        # send telemetry
+        # Apply to actuators
+        for i, (actuator, angle) in enumerate(zip(ACTUATORS, joint_angles_deg)):
+
+            continuous_angle = closest_equivalent_angle(
+                angle,
+                last_joint_targets[i]
+            )
+
+            last_joint_targets[i] = continuous_angle
+
+            logger.debug(f"Setting {actuator.name} to {continuous_angle:.2f} deg")
+
+            actuator.set_position(continuous_angle)
+
+        # Send telemetry
         for actuator in ACTUATORS:
             pos = actuator.target_position
             vel = actuator.get_velocity()
-            await control_socket.outputs.update_output(f"{actuator.name}_pos", pos)
-            await control_socket.outputs.update_output(f"{actuator.name}_vel", vel)
+
+            await control_socket.outputs.update_output(
+                f"{actuator.name}_pos", pos
+            )
+            await control_socket.outputs.update_output(
+                f"{actuator.name}_vel", vel
+            )
 
         await asyncio.sleep(interval)
+
 
 # -------------------------
 # HEARTBEAT LOOP
@@ -112,6 +167,7 @@ async def heartbeat_loop(interval: float):
     while True:
         print("HEARTBEAT")
         await asyncio.sleep(interval)
+
 
 # -------------------------
 # MAIN
@@ -125,15 +181,9 @@ async def main(
 ):
     global manager
 
-    # -------------------------
-    # CAN CLIENT
-    # -------------------------
     can_client = CANClient()
     await can_client.start()
 
-    # -------------------------
-    # ACTUATOR MANAGER
-    # -------------------------
     manager = ActuatorManager(can_client, rate_hz=20.0)
 
     for actuator in ACTUATORS:
@@ -142,9 +192,6 @@ async def main(
 
     asyncio.create_task(manager.loop())
 
-    # -------------------------
-    # CONTROL SOCKET
-    # -------------------------
     control_socket = ControlSocket(
         ws_host,
         ws_port,
@@ -152,20 +199,25 @@ async def main(
         allow_multiple_clients=False,
     )
 
-    # register inputs for cartesian velocities
+    # Register velocity inputs
     for axis_name in velocity_inputs.keys():
         schema.register_axis(
             control_socket.inputs,
             axis_name,
-            callback=lambda v, axis=axis_name: asyncio.create_task(handle_axis(axis, v)),
+            callback=lambda v, axis=axis_name:
+                asyncio.create_task(handle_axis(axis, v)),
         )
-    
+
+    # Register outputs
     for actuator in ACTUATORS:
         control_socket.outputs.register_output(f"{actuator.name}_pos")
         control_socket.outputs.register_output(f"{actuator.name}_vel")
 
     await control_socket.start()
-    logger.info(f"ControlSocket running on ws://{ws_host}:{ws_port} as '{ws_name}'")
+
+    logger.info(
+        f"ControlSocket running on ws://{ws_host}:{ws_port} as '{ws_name}'"
+    )
 
     tasks = [
         asyncio.create_task(heartbeat_loop(heartbeat)),
@@ -183,6 +235,7 @@ async def main(
         await asyncio.sleep(0)
         await control_socket.stop()
         await can_client.close()
+
 
 # -------------------------
 # ENTRYPOINT
