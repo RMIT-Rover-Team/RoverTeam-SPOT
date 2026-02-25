@@ -134,9 +134,9 @@ async def telemetry_loop(control_socket: ControlSocket, interval: float):
             if not success:
                 logger.warning(
                     f"Target unreachable, moving to closest achievable position: "
-                    f"x={desired_position['x']:.1f}, "
-                    f"y={desired_position['y']:.1f}, "
-                    f"z={desired_position['z']:.1f}"
+                    f"x={desired_position['x']:.1f}mm, "
+                    f"y={desired_position['y']:.1f}mm, "
+                    f"z={desired_position['z']:.1f}mm"
                 )
 
         except Exception as e:

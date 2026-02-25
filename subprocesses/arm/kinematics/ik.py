@@ -101,90 +101,100 @@ class RobotArm6DOF:
 
     def inverse_kin(self, x, y, z, roll, pitch, yaw):
         """
-        Compute inverse kinematics for the desired end-effector pose.
+        Compute inverse kinematics for a 6-DOF arm.
+
+        All units in meters, angles in radians.
 
         Returns:
-            q: List of 6 joint angles in radians (after direction flips)
-            success: bool, True if target reachable, False if clamped
-            achievable_pos: tuple (x, y, z) of actual reachable wrist position
+            q: list of 6 joint angles in radians
+            success: bool, True if target reachable
+            achievable_pos: tuple (x, y, z) of reachable wrist center
         """
         success = True
 
-        # ---- Rotation matrix from Euler (ZYX) ----
+        # ---- Rotation matrix from Euler angles (ZYX) ----
         R_x = np.array([
             [1, 0, 0],
             [0, math.cos(roll), -math.sin(roll)],
             [0, math.sin(roll), math.cos(roll)]
         ])
-
         R_y = np.array([
             [math.cos(pitch), 0, math.sin(pitch)],
             [0, 1, 0],
             [-math.sin(pitch), 0, math.cos(pitch)]
         ])
-
         R_z = np.array([
             [math.cos(yaw), -math.sin(yaw), 0],
             [math.sin(yaw),  math.cos(yaw), 0],
             [0, 0, 1]
         ])
-
         R0g = R_z @ R_y @ R_x
 
-        # ---- Wrist center ----
+        # ---- Compute wrist center ----
         nx, ny, nz = R0g[:, 2]
         xw = x - self.d7 * nx
         yw = y - self.d7 * ny
         zw = z - self.d7 * nz
 
-        # ---- Vector from base to wrist ----
-        dx = xw
-        dy = yw
-        dz = zw - self.d1
-        dist = math.sqrt(dx**2 + dy**2 + dz**2)
+        print(f"[IK DEBUG] Wrist center before clamping: x={xw:.3f}, y={yw:.3f}, z={zw:.3f}")
+
+        # ---- Distance in plane for first 3 joints ----
+        xy_dist = math.sqrt(xw**2 + yw**2)
+        mx = xy_dist - self.a1
+        my = zw - self.d1
+        m = math.sqrt(mx**2 + my**2)
         max_reach = self.a2 + self.l
 
-        # ---- Clamp to reachable workspace ----
-        if dist > max_reach:
+        if m > max_reach:
             success = False
-            scale = max_reach / dist
-            dx *= scale
-            dy *= scale
-            dz *= scale
-            xw = dx
-            yw = dy
-            zw = dz + self.d1
+            scale = max_reach / m
+            mx *= scale
+            my *= scale
+            # Update achievable wrist center
+            xy_unit = xy_dist and np.array([xw, yw]) / xy_dist or np.array([0.0, 0.0])
+            xw = self.a1 + mx * xy_unit[0]
+            yw = 0.0 + mx * xy_unit[1]
+            zw = self.d1 + my
+            print(f"[IK DEBUG] Wrist center clamped to max reach: x={xw:.3f}, y={yw:.3f}, z={zw:.3f}")
 
         achievable_pos = (xw, yw, zw)
 
-        # ---- First 3 joint angles (planar IK) ----
-        r = math.sqrt(xw**2 + yw**2)
-        s = zw - self.d1
-
+        # ---- Helper for safe acos ----
         def safe_acos(val):
             return math.acos(max(-1.0, min(1.0, val)))
 
-        # Law of cosines
-        D = (r**2 + s**2 - self.a2**2 - self.l**2) / (2 * self.a2 * self.l)
-        D = max(-1.0, min(1.0, D))
-        q3 = math.atan2(-math.sqrt(1 - D**2), D) + self.phi  # elbow-down
-        q2 = math.atan2(s, r) - math.atan2(self.l * math.sin(q3 - self.phi), self.a2 + self.l * math.cos(q3 - self.phi))
-        q1 = math.atan2(yw, xw)
+        # ---- Solve first 3 joints (planar 2D triangle) ----
+        alpha = math.atan2(my, mx)
+        try:
+            gamma = safe_acos((self.l**2 + self.a2**2 - m**2) / (2 * self.l * self.a2))
+            beta  = safe_acos((m**2 + self.a2**2 - self.l**2) / (2 * m * self.a2))
+        except ValueError as e:
+            success = False
+            print(f"[IK DEBUG] acos error: {e}, clamping to 0")
+            gamma = 0.0
+            beta = 0.0
 
-        # ---- Compute wrist orientation ----
+        q1 = math.atan2(yw, xw)
+        q2 = math.pi/2 - beta - alpha
+        q3 = -(gamma - self.phi)
+
+        print(f"[IK DEBUG] q1={math.degrees(q1):.1f}, q2={math.degrees(q2):.1f}, q3={math.degrees(q3):.1f}")
+
+        # ---- Compute wrist orientation (last 3 joints) ----
         try:
             R03 = self.forward_kin([q1, q2, q3, 0, 0, 0])[3]
             R36 = R03.T @ R0g
             q4 = math.atan2(R36[2, 2], -R36[0, 2])
             q5 = math.atan2(math.sqrt(R36[0, 2]**2 + R36[2, 2]**2), R36[1, 2])
             q6 = math.atan2(-R36[1, 1], R36[1, 0])
-        except Exception:
+        except Exception as e:
             success = False
+            print(f"[IK DEBUG] Wrist orientation unreachable: {e}")
             q4 = q5 = q6 = 0.0
 
         q = [q1, q2, q3, q4, q5, q6]
 
-        # ---- Apply joint direction flips ----
+        # ---- Apply joint directions ----
         q = [q[i] * self.joint_directions[i] for i in range(6)]
 
         return q, success, achievable_pos
