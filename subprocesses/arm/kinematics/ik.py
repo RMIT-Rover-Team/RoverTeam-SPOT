@@ -106,7 +106,7 @@ class RobotArm6DOF:
         Returns:
             q: List of 6 joint angles in radians (after direction flips)
             success: bool, True if target reachable, False if clamped
-            achievable_pos: tuple (x, y, z) of actual reachable wrist position (meters)
+            achievable_pos: tuple (x, y, z) of actual reachable wrist position
         """
         success = True
 
@@ -137,38 +137,39 @@ class RobotArm6DOF:
         yw = y - self.d7 * ny
         zw = z - self.d7 * nz
 
-        # ---- Distance in plane for first 3 joints ----
-        x_prime = math.sqrt(xw**2 + yw**2)
-        mx = x_prime - self.a1
-        my = zw - self.d1
-        m = math.sqrt(mx**2 + my**2)
-
-        # ---- Handle out-of-reach gracefully ----
+        # ---- Vector from base to wrist ----
+        dx = xw
+        dy = yw
+        dz = zw - self.d1
+        dist = math.sqrt(dx**2 + dy**2 + dz**2)
         max_reach = self.a2 + self.l
-        if m > max_reach:
+
+        # ---- Clamp to reachable workspace ----
+        if dist > max_reach:
             success = False
-            # Scale down the vector to max reach while keeping direction
-            scale = max_reach / m
-            mx *= scale
-            my *= scale
-            # Update achievable wrist position
-            xw = (mx + self.a1) * (xw / x_prime) if x_prime != 0 else 0.0
-            yw = (mx + self.a1) * (yw / x_prime) if x_prime != 0 else 0.0
-            zw = my + self.d1
+            scale = max_reach / dist
+            dx *= scale
+            dy *= scale
+            dz *= scale
+            xw = dx
+            yw = dy
+            zw = dz + self.d1
 
         achievable_pos = (xw, yw, zw)
 
-        # ---- Helper for safe acos ----
+        # ---- First 3 joint angles (planar IK) ----
+        r = math.sqrt(xw**2 + yw**2)
+        s = zw - self.d1
+
         def safe_acos(val):
             return math.acos(max(-1.0, min(1.0, val)))
 
-        alpha = math.atan2(my, mx)
-        gamma = safe_acos((self.l**2 + self.a2**2 - m**2) / (2*self.l*self.a2))
-        beta  = safe_acos((m**2 + self.a2**2 - self.l**2) / (2*m*self.a2))
-
+        # Law of cosines
+        D = (r**2 + s**2 - self.a2**2 - self.l**2) / (2 * self.a2 * self.l)
+        D = max(-1.0, min(1.0, D))
+        q3 = math.atan2(-math.sqrt(1 - D**2), D) + self.phi  # elbow-down
+        q2 = math.atan2(s, r) - math.atan2(self.l * math.sin(q3 - self.phi), self.a2 + self.l * math.cos(q3 - self.phi))
         q1 = math.atan2(yw, xw)
-        q2 = math.pi/2 - beta - alpha
-        q3 = -(gamma - self.phi)
 
         # ---- Compute wrist orientation ----
         try:
@@ -178,7 +179,6 @@ class RobotArm6DOF:
             q5 = math.atan2(math.sqrt(R36[0, 2]**2 + R36[2, 2]**2), R36[1, 2])
             q6 = math.atan2(-R36[1, 1], R36[1, 0])
         except Exception:
-            # fallback if orientation is unreachable
             success = False
             q4 = q5 = q6 = 0.0
 
