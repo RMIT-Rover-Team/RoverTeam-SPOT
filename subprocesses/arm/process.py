@@ -97,6 +97,9 @@ async def handle_axis(axis_name: str, value: float):
 # -------------------------
 # TELEMETRY + IK LOOP
 # -------------------------
+# -------------------------
+# TELEMETRY + IK LOOP
+# -------------------------
 async def telemetry_loop(control_socket: ControlSocket, interval: float):
     global last_time
 
@@ -119,7 +122,23 @@ async def telemetry_loop(control_socket: ControlSocket, interval: float):
         yaw = math.radians(desired_position["yaw"])
 
         try:
-            joint_angles_rad = robot.inverse_kin(x, y, z, roll, pitch, yaw)
+            joint_angles_rad, success, achievable_pos = robot.inverse_kin(
+                x, y, z, roll, pitch, yaw
+            )
+
+            # Update desired_position with achievable position (clamped)
+            desired_position["x"] = achievable_pos[0] * 1000.0
+            desired_position["y"] = achievable_pos[1] * 1000.0
+            desired_position["z"] = achievable_pos[2] * 1000.0
+
+            if not success:
+                logger.warning(
+                    f"Target unreachable, moving to closest achievable position: "
+                    f"x={desired_position['x']:.1f}, "
+                    f"y={desired_position['y']:.1f}, "
+                    f"z={desired_position['z']:.1f}"
+                )
+
         except Exception as e:
             logger.error(f"IK failed: {e}")
             await asyncio.sleep(interval)
@@ -157,8 +176,13 @@ async def telemetry_loop(control_socket: ControlSocket, interval: float):
                 f"{actuator.name}_vel", vel
             )
 
-        for pos in desired_position.keys():
-            await control_socket.outputs.update_output(f"{pos}_pos", desired_position[pos])
+        # Output current desired (or clamped) position
+        for pos in ["x", "y", "z", "roll", "pitch", "yaw"]:
+            await control_socket.outputs.update_output(
+                f"{pos}_pos", desired_position[pos]
+            )
+
+        await control_socket.outputs.update_output("ik_success", success)
 
         await asyncio.sleep(interval)
 
@@ -218,6 +242,8 @@ async def main(
 
     for pos in desired_position.keys():
         control_socket.outputs.register_output(f"{pos}_pos")
+
+    control_socket.outputs.register_output("ik_success", "bool")
 
     await control_socket.start()
 

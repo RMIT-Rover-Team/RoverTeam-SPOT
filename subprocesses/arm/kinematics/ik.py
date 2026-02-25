@@ -100,6 +100,15 @@ class RobotArm6DOF:
     # ======================================================
 
     def inverse_kin(self, x, y, z, roll, pitch, yaw):
+        """
+        Compute inverse kinematics for the desired end-effector pose.
+
+        Returns:
+            q: List of 6 joint angles in radians (after direction flips)
+            success: bool, True if target reachable, False if clamped
+            achievable_pos: tuple (x, y, z) of actual reachable wrist position
+        """
+        success = True
 
         # Rotation matrix from Euler (ZYX)
         R_x = np.array([
@@ -136,15 +145,29 @@ class RobotArm6DOF:
         my = zw - self.d1
         m = math.sqrt(mx**2 + my**2)
 
+        # ---- Handle out-of-reach gracefully ----
+        max_reach = self.a2 + self.l
+        if m > max_reach:
+            success = False
+            # Scale down vector to max reach
+            scale = max_reach / m
+            mx *= scale
+            my *= scale
+            m = max_reach
+            # update achievable wrist position
+            xw = mx + self.a1
+            yw = yw / x_prime * (mx + self.a1) if x_prime != 0 else 0
+            zw = my + self.d1
+
+        achievable_pos = (xw, yw, zw)
+
         alpha = math.atan2(my, mx)
 
-        gamma = math.acos(
-            (self.l**2 + self.a2**2 - m**2) / (2*self.l*self.a2)
-        )
+        def safe_acos(val):
+            return math.acos(max(-1.0, min(1.0, val)))
 
-        beta = math.acos(
-            (m**2 + self.a2**2 - self.l**2) / (2*m*self.a2)
-        )
+        gamma = safe_acos((self.l**2 + self.a2**2 - m**2) / (2*self.l*self.a2))
+        beta  = safe_acos((m**2 + self.a2**2 - self.l**2) / (2*m*self.a2))
 
         q2 = math.pi/2 - beta - alpha
         q3 = -(gamma - self.phi)
@@ -165,4 +188,4 @@ class RobotArm6DOF:
         # Apply direction flips
         q = [q[i] * self.joint_directions[i] for i in range(6)]
 
-        return q
+        return q, success, achievable_pos
