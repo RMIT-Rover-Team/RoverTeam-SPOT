@@ -33,13 +33,12 @@ logger.addHandler(JsonHandler())
 # J1,2,3 are dummy (cartesian integrators)
 # J4,5,6 are MyActuator
 ACTUATORS = [
-    DummyActuator("J1"),
-    DummyActuator("J2"),
-    DummyActuator("J3"),
-
-    MyActuator("J4", 0x142),
-    MyActuator("J5", 0x143),
-    MyActuator("J6", 0x144),
+    MyActuator("J1", 0x142),
+    MyActuator("J2", 0x143),
+    MyActuator("J3", 0x144),
+    DummyActuator("J4"),
+    DummyActuator("J5"),
+    DummyActuator("J6"),
 ]
 
 # -------------------------
