@@ -162,9 +162,10 @@ class RobotArm6DOF:
             m = max_reach
 
         # Update achievable wrist position
-        achievable_xw = mx + self.a1
-        achievable_yw = yw / x_prime * (mx + self.a1) if x_prime != 0 else 0
-        achievable_zw = my + self.d1
+        scale = m / math.sqrt(xw**2 + yw**2) if (xw**2 + yw**2) != 0 else 0
+        achievable_xw = xw * scale
+        achievable_yw = yw * scale
+        achievable_zw = zw  # z is already along vertical
         achievable_pos = (achievable_xw, achievable_yw, achievable_zw)
 
         alpha = math.atan2(my, mx)
