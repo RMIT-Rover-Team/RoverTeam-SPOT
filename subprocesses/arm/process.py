@@ -157,6 +157,9 @@ async def telemetry_loop(control_socket: ControlSocket, interval: float):
                 f"{actuator.name}_vel", vel
             )
 
+        for pos in desired_position.keys():
+            control_socket.outputs.update_output(f"{pos}_pos", desired_position[pos])
+
         await asyncio.sleep(interval)
 
 
@@ -212,6 +215,9 @@ async def main(
     for actuator in ACTUATORS:
         control_socket.outputs.register_output(f"{actuator.name}_pos")
         control_socket.outputs.register_output(f"{actuator.name}_vel")
+
+    for pos in desired_position.keys():
+        control_socket.outputs.register_output(f"{pos}_pos")
 
     await control_socket.start()
 
