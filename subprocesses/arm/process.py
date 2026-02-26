@@ -3,13 +3,12 @@ import argparse
 import json
 import logging
 import signal
-import time
 
 from sharedlib.controlsocket.controlsocket import ControlSocket
 from sharedlib.controlsocket import schema
 from sharedlib.canbus.client import CANClient
 from sharedlib.actuator.actuator_manager import ActuatorManager
-from sharedlib.actuator.myactuator import MyActuator
+from sharedlib.actuator.odrive import ODriveActuator
 
 
 # -------------------------
@@ -27,16 +26,22 @@ logger.addHandler(JsonHandler())
 
 
 # -------------------------
-# ACTUATOR CONFIG
+# ODRIVE CONFIG
 # -------------------------
-ACTUATOR_NAME = "J1"
-ACTUATOR_ID = 0x142
+ACTUATOR_NAME = "drive_axis"
+ODRIVE_NODE_ID = 4   # change to match your ODrive node ID
+INVERTED = False
 
-actuator = MyActuator(ACTUATOR_NAME, ACTUATOR_ID)
+actuator = ODriveActuator(
+    name=ACTUATOR_NAME,
+    node_id=ODRIVE_NODE_ID,
+    inverted=INVERTED,
+)
+
 manager: ActuatorManager | None = None
 
-# Velocity command (deg/sec)
-commanded_velocity = 0.0
+# Velocity command (deg/sec from input)
+commanded_velocity_deg = 0.0
 
 # Shutdown flag
 shutdown_event = asyncio.Event()
@@ -46,8 +51,8 @@ shutdown_event = asyncio.Event()
 # INPUT CALLBACK
 # -------------------------
 async def handle_pitch_input(value: float):
-    global commanded_velocity
-    commanded_velocity = value
+    global commanded_velocity_deg
+    commanded_velocity_deg = value
 
 
 # -------------------------
@@ -56,11 +61,14 @@ async def handle_pitch_input(value: float):
 async def control_loop(control_socket: ControlSocket, interval: float):
     while not shutdown_event.is_set():
 
-        actuator.set_velocity(commanded_velocity)
+        # Convert deg/sec -> turns/sec (ODrive native)
+        turns_per_sec = commanded_velocity_deg / 360.0
+
+        actuator.set_velocity(turns_per_sec)
 
         await control_socket.outputs.update_output(
             "pitch_velocity_cmd",
-            commanded_velocity,
+            commanded_velocity_deg,
         )
 
         await asyncio.sleep(interval)
@@ -71,7 +79,12 @@ async def control_loop(control_socket: ControlSocket, interval: float):
 # -------------------------
 async def heartbeat_loop(control_socket: ControlSocket, interval: float):
     while not shutdown_event.is_set():
-        print("HEARTBEAT")
+
+        await control_socket.outputs.update_output(
+            "heartbeat",
+            True,
+        )
+
         await asyncio.sleep(interval)
 
 
@@ -99,7 +112,9 @@ async def main(
     loop.add_signal_handler(signal.SIGINT, request_shutdown)
     loop.add_signal_handler(signal.SIGTERM, request_shutdown)
 
+    # -------------------------
     # CAN setup
+    # -------------------------
     can_client = CANClient()
     await can_client.start()
 
@@ -107,7 +122,12 @@ async def main(
     manager.register(actuator)
     asyncio.create_task(manager.loop())
 
+    # Arm ODrive
+    actuator.request_arm()
+
+    # -------------------------
     # WebSocket setup
+    # -------------------------
     control_socket = ControlSocket(
         ws_host,
         ws_port,
@@ -129,7 +149,7 @@ async def main(
     await control_socket.start()
 
     logger.info(
-        f"Velocity control running on ws://{ws_host}:{ws_port}"
+        f"ODrive velocity control running on ws://{ws_host}:{ws_port}"
     )
 
     control_task = asyncio.create_task(
@@ -143,8 +163,11 @@ async def main(
     # Wait for shutdown
     await shutdown_event.wait()
 
-    # Stop actuator safely
+    # -------------------------
+    # Safe stop
+    # -------------------------
     actuator.set_velocity(0.0)
+    actuator.request_disarm()
 
     control_task.cancel()
     heartbeat_task.cancel()
@@ -164,7 +187,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--ws_host", type=str, default="0.0.0.0")
     parser.add_argument("--ws_port", type=int, default=8766)
-    parser.add_argument("--ws_name", type=str, default="single_velocity")
+    parser.add_argument("--ws_name", type=str, default="odrive_velocity")
     parser.add_argument("--status_interval", type=float, default=0.02)
     parser.add_argument("--heartbeat", type=float, default=5.0)
 
