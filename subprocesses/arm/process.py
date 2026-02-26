@@ -71,18 +71,7 @@ async def control_loop(control_socket: ControlSocket, interval: float):
 # -------------------------
 async def heartbeat_loop(control_socket: ControlSocket, interval: float):
     while not shutdown_event.is_set():
-
-        ts = time.time()
-
-        # Local log (useful for journalctl)
-        logger.info("HEARTBEAT")
-
-        # Websocket output
-        await control_socket.outputs.update_output(
-            "heartbeat",
-            ts,
-        )
-
+        print("HEARTBEAT")
         await asyncio.sleep(interval)
 
 
