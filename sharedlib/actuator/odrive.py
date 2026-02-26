@@ -37,6 +37,7 @@ class ODriveActuator(Actuator):
         self._last_velocity = 0.0
         self.max_accel = max_accel  # turns/sec per loop
         self._last_time = time.time()
+        self._lastAxisState = self.AXIS_STATE_IDLE
 
     # -------------------------------------------------
     # CAN ID helper
@@ -64,6 +65,11 @@ class ODriveActuator(Actuator):
             if self._arm_requested
             else self.AXIS_STATE_IDLE
         )
+
+        if target_state == self._lastAxisState:
+            return None  # no change needed
+        
+        self._lastAxisState = target_state
 
         payload = struct.pack("<I", target_state)
         return self._msg_id(self.CMD_SET_AXIS_STATE), payload
