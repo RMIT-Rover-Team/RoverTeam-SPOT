@@ -29,13 +29,11 @@ logger.addHandler(JsonHandler())
 # ODRIVE CONFIG
 # -------------------------
 ACTUATOR_NAME = "drive_axis"
-ODRIVE_NODE_ID = 4   # change to match your ODrive node ID
-INVERTED = False
+ODRIVE_NODE_ID = 0x4   # change to match your ODrive node ID
 
 actuator = ODriveActuator(
     name=ACTUATOR_NAME,
-    node_id=ODRIVE_NODE_ID,
-    inverted=INVERTED,
+    node_id=ODRIVE_NODE_ID
 )
 
 manager: ActuatorManager | None = None

@@ -83,12 +83,16 @@ class WebSocketServer:
         ws = web.WebSocketResponse()
         await ws.prepare(request)
 
-        # Single-client mode enforcement
+        # Single-client mode enforcement: drop old client if new one connects
         if not self._allow_multiple and self._clients:
-            log.warning("Rejecting new WS client (single-client mode)")
-            await ws.send_str(json.dumps({"error": "already_connected"}))
-            await ws.close()
-            return ws
+            old_client = next(iter(self._clients))
+            log.info("Dropping previous WS client in favor of new connection")
+            try:
+                await old_client.send_str(json.dumps({"error": "disconnected_by_new_client"}))
+                await old_client.close()
+            except Exception:
+                pass
+            self._clients.discard(old_client)
 
         self._clients.add(ws)
         log.info("WS client connected: %s", request.remote)
