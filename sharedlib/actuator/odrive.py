@@ -67,7 +67,7 @@ class ODriveActuator(Actuator):
         if self.inverted:
             velocity *= -1
 
-        payload = struct.pack("<ff", velocity, 0.0)
+        payload = struct.pack("<ff", velocity, 60000)
 
         return self._msg_id(self.CMD_SET_INPUT_VEL), payload
 
