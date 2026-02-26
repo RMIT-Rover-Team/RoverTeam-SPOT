@@ -294,6 +294,7 @@ This full file is included in `RoverTeam-SPOT/setup/20-eth0.network`
 
 After this, run the following for it to take effect:
 ```bash
+sudo systemctl enable systemd-networkd
 sudo systemctl restart systemd-networkd
 ```
 
