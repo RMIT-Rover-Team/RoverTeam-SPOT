@@ -1,0 +1,12 @@
+// Equinox 2 SPOT Profile:
+{
+    "name": "Equinox 2 SPOT",
+    "processes": [
+        "canbus",
+        "telemetry",
+        "cameras",
+        // Manually start arm, excavator, or science depending on payload
+        "arm"
+        //"excavator"
+    ]
+}

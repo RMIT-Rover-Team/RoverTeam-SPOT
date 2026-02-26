@@ -78,7 +78,7 @@ async def start_telemetry_server(
     await runner.setup()
     site = web.TCPSite(runner, host, port)
 
-    logging.warning(
+    logging.info(
         f"Telemetry WebSocket server listening on ws://{host}:{port}/ws"
     )
 

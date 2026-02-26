@@ -2,158 +2,180 @@ import asyncio
 import argparse
 import json
 import logging
+import signal
 import time
 
-from gamepad_ws.receiver import Receiver
-from gamepad_ws.server import GamepadServer
-
-from canbus.canbus import CANBus
-from canbus.MyActuator import MyActuator
-
-#Import the universal payload control layer
-import payloadControlBinaries.pyRover as pyRover
-
+from sharedlib.controlsocket.controlsocket import ControlSocket
+from sharedlib.controlsocket import schema
+from sharedlib.canbus.client import CANClient
+from sharedlib.actuator.actuator_manager import ActuatorManager
+from sharedlib.actuator.myactuator import MyActuator
 
 
 # -------------------------
-# CONFIG
+# LOGGING
 # -------------------------
-
 class JsonHandler(logging.StreamHandler):
     def emit(self, record):
         log_obj = {"level": record.levelname, "msg": record.getMessage()}
         print(json.dumps(log_obj), flush=True)
 
+
 logger = logging.getLogger()
-logger.setLevel(logging.DEBUG)
+logger.setLevel(logging.INFO)
 logger.addHandler(JsonHandler())
 
 
 # -------------------------
-# CAN + Actuator setup
+# ACTUATOR CONFIG
 # -------------------------
+ACTUATOR_NAME = "J1"
+ACTUATOR_ID = 0x142
 
-bus = CANBus("can0")
+actuator = MyActuator(ACTUATOR_NAME, ACTUATOR_ID)
+manager: ActuatorManager | None = None
 
-#Initialise the master
-payloadMaster = pyRover.PyRover("can0",1)
+# Velocity command (deg/sec)
+commanded_velocity = 0.0
 
-actuators = {
-    3: MyActuator(3, bus),
-    4: MyActuator(4, bus),
-}
-
-MAX_ANGLE = 45.0
-DEADZONE = 0.05
+# Shutdown flag
+shutdown_event = asyncio.Event()
 
 
 # -------------------------
-# Helpers
+# INPUT CALLBACK
 # -------------------------
-
-def map_axis_to_angle(value: float) -> float:
-    """
-    Maps joystick axis [-1,1] to [-45°,45°]
-    """
-    value = max(-1.0, min(1.0, value))
-
-    if abs(value) < DEADZONE:
-        return 0.0
-
-    return value * MAX_ANGLE
+async def handle_pitch_input(value: float):
+    global commanded_velocity
+    commanded_velocity = value
 
 
 # -------------------------
-# Gamepad Handlers
+# CONTROL LOOP
 # -------------------------
+async def control_loop(control_socket: ControlSocket, interval: float):
+    while not shutdown_event.is_set():
 
-async def handle_gamepad_message(msg: dict, receiver):
+        actuator.set_velocity(commanded_velocity)
 
-    if "buttons" in msg and "axes" in msg:
-        axes = msg["axes"]
-        handle_axes(axes)
-    else:
-        logger.warning("unknown gamepad message: %s", msg)
+        await control_socket.outputs.update_output(
+            "pitch_velocity_cmd",
+            commanded_velocity,
+        )
 
-
-def handle_axes(axes):
-    axis2 = axes[2] if len(axes) > 2 else 0.0
-    axis3 = axes[3] if len(axes) > 3 else 0.0
-
-    target_3 = map_axis_to_angle(axis2)
-    target_4 = map_axis_to_angle(axis3)
-
-    actuators[3].set_position(target_3, max_speed_dps=90)
-    actuators[4].set_position(target_4, max_speed_dps=90)
-
-
-# -------------------------
-# Telemetry Loop
-# -------------------------
-
-async def telemetry_loop(interval: float):
-    while True:
-        now = time.time()
-
-        data = {
-            motor_id: {
-                "position_deg": act.position_deg,
-                "last_update": act.last_position_time,
-                "connected": (
-                    act.last_position_time is not None and
-                    now - act.last_position_time <= interval * 3
-                )
-            }
-            for motor_id, act in actuators.items()
-        }
-
-        print(f"JSON {json.dumps({'type': 'arm', 'data': data})}")
         await asyncio.sleep(interval)
 
-async def heartbeat_loop(interval: float):
-    while True:
-        # Could be used for simple logging/debug
+
+# -------------------------
+# HEARTBEAT LOOP
+# -------------------------
+async def heartbeat_loop(control_socket: ControlSocket, interval: float):
+    while not shutdown_event.is_set():
         print("HEARTBEAT")
         await asyncio.sleep(interval)
+
+
+# -------------------------
+# CLEAN SHUTDOWN
+# -------------------------
+def request_shutdown():
+    logger.info("Shutdown signal received")
+    shutdown_event.set()
+
 
 # -------------------------
 # MAIN
 # -------------------------
+async def main(
+    ws_host: str,
+    ws_port: int,
+    ws_name: str,
+    status_interval: float,
+    heartbeat_interval: float,
+):
+    global manager
 
-async def main(heartbeat: float, sub_url: str, status_interval: float, ws_host: str, ws_port: int):
+    loop = asyncio.get_running_loop()
+    loop.add_signal_handler(signal.SIGINT, request_shutdown)
+    loop.add_signal_handler(signal.SIGTERM, request_shutdown)
 
-    receiver = Receiver(lambda msg: handle_gamepad_message(msg, receiver))
-    gamepad_server = GamepadServer(ws_host, ws_port, receiver, sender_agents=actuators)
+    # CAN setup
+    can_client = CANClient()
+    await can_client.start()
 
-    await gamepad_server.start()
+    manager = ActuatorManager(can_client, rate_hz=50.0)
+    manager.register(actuator)
+    asyncio.create_task(manager.loop())
 
-    tasks = [
-        asyncio.create_task(heartbeat_loop(heartbeat)),
-        asyncio.create_task(telemetry_loop(status_interval))
-    ]
+    # WebSocket setup
+    control_socket = ControlSocket(
+        ws_host,
+        ws_port,
+        ws_name,
+        allow_multiple_clients=False,
+    )
 
-    try:
-        await asyncio.gather(*tasks)
-    except asyncio.CancelledError:
-        logger.info("Shutdown received")
-    finally:
-        for t in tasks:
-            t.cancel()
-        await asyncio.sleep(0)
-        await gamepad_server.stop()
+    # Register pitch input (deg/sec)
+    schema.register_axis(
+        control_socket.inputs,
+        "pitch",
+        callback=lambda v: asyncio.create_task(handle_pitch_input(v)),
+    )
+
+    # Outputs
+    control_socket.outputs.register_output("pitch_velocity_cmd")
+    control_socket.outputs.register_output("heartbeat")
+
+    await control_socket.start()
+
+    logger.info(
+        f"Velocity control running on ws://{ws_host}:{ws_port}"
+    )
+
+    control_task = asyncio.create_task(
+        control_loop(control_socket, status_interval)
+    )
+
+    heartbeat_task = asyncio.create_task(
+        heartbeat_loop(control_socket, heartbeat_interval)
+    )
+
+    # Wait for shutdown
+    await shutdown_event.wait()
+
+    # Stop actuator safely
+    actuator.set_velocity(0.0)
+
+    control_task.cancel()
+    heartbeat_task.cancel()
+
+    await asyncio.sleep(0)
+
+    await control_socket.stop()
+    await can_client.close()
+
+    logger.info("Shutdown complete")
 
 
 # -------------------------
 # ENTRYPOINT
 # -------------------------
-
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--heartbeat", type=float, default=10)
-    parser.add_argument("--status_interval", type=float, default=0.2)
     parser.add_argument("--ws_host", type=str, default="0.0.0.0")
-    parser.add_argument("--sub_url", type=str)
     parser.add_argument("--ws_port", type=int, default=8766)
+    parser.add_argument("--ws_name", type=str, default="single_velocity")
+    parser.add_argument("--status_interval", type=float, default=0.02)
+    parser.add_argument("--heartbeat", type=float, default=5.0)
+
     args = parser.parse_args()
 
-    asyncio.run(main(args.heartbeat, args.sub_url, args.status_interval, args.ws_host, args.ws_port))
+    asyncio.run(
+        main(
+            args.ws_host,
+            args.ws_port,
+            args.ws_name,
+            args.status_interval,
+            args.heartbeat,
+        )
+    )

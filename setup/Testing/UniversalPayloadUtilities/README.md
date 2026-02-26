@@ -1,7 +1,7 @@
 # rmit-lib-universal-canbus
-A universal canbus wrapper for RMIT rovers
+A universal canbus wrapper for RAT series rovers
 
-Contains several versions for various uses:
+Contains several versions for varuous uses:
 
 C++:
 Linux - Master (SocketCan)
