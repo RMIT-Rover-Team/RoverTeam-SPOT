@@ -57,7 +57,13 @@ async def canbus_telemetry_loop(can_port, ws_port):
         logger.info(f"CAN Polling active: {can_port} -> WS:{ws_port}")
 
         while True:
-            frame = bus.read_msg_from(telemetry_ids, 0xFFF)
+            bus.set_socket_filter(telemetry_ids)
+            frame = bus.read_msg()
+            if not frame:
+                continue
+            logger.info(
+                f"CANID: {frame.can_id}, DLC: {frame.can_dlc}, DATA: {frame.data}"
+            )
 
             if frame:
                 asyncio.create_task(telemetry_server.__broadcast(frame))
@@ -113,7 +119,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--sub_url", type=str, default="tcp://127.0.0.1:5555", help="ZMQ SUB socket URL"
     )
-    parser.add_argument("--can_port", type=str, default="vcan0")
+    parser.add_argument("--can_port", type=str, default="can0")
     parser.add_argument("--ws_port", type=int, default=8766)
     args = parser.parse_args()
 

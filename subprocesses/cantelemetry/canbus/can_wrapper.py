@@ -27,31 +27,17 @@ class WrappedCanbus:
             self.can_buffer: deque[CanFrame] = deque(maxlen=500)
             self.telemetry_ids: set[int] = {0x01, 0x02, 0x03}
         except OSError as e:
-            warnings.warn(f"Open Socket Error:, {e}")
+            warnings.warn(f"Open Socket Error: {e}")
+            warnings.warn(f"Interface Name: {interface_name}")
             raise
 
-    def set_socket_filter(self, slave_ids):
-        filter_data = b""
-
-        if not slave_ids:
-            return
-
-        if isinstance(slave_ids, int):
-            slave_ids = {slave_ids}
-
-        mask = 0xFC0
-
-        filter_data = b""
-
-        for sid in slave_ids:
-            # Shift the slave ID into the correct position
-            can_id = (sid & 0x3F) << 6
-            filter_data += struct.pack("II", can_id, mask)
-
-        if filter_data:
-            self.s.setsockopt(socket.SOL_CAN_RAW, socket.CAN_RAW_FILTER, filter_data)
-
     def read_from_socket(self) -> Optional[CanFrame]:
+        """Set a filter for can ids on the socket.
+
+        Args:
+            slave_ids: a list of slave_ids to filter from.
+        """
+
         try:
             raw_bytes = self.s.recv(16)
 
@@ -72,7 +58,7 @@ class WrappedCanbus:
             return None
 
     def drain_socket(self) -> None:
-
+        """Drain all messages from the bus to add to the deque"""
         while True:
             frame = self.read_from_socket()
             if frame is None:
@@ -80,14 +66,24 @@ class WrappedCanbus:
 
             self.can_buffer.append(frame)
 
-    def read_msg(self) -> CanFrame:
+    def read_msg(self) -> Optional[CanFrame]:
+        """Adds all messages to the deque then reads the first message from the deque.
+        Args:
+            slave_ids: a list of slave_ids to filter from.
+        """
         self.drain_socket()
 
         if not self.can_buffer:
             return None
         return self.can_buffer.popleft()
 
-    def read_msg_from(self, slave_ids, mask=0xFC0):
+    def read_msg_from(
+        self, slave_ids: list[int], mask: int = 0xFC0
+    ) -> Optional[CanFrame]:
+        """Adds all messages to the deque then reads the first message from the deque that fits the slave_id.
+        Args:
+            slave_ids: a list of slave_ids to read from.
+        """
         self.drain_socket()
 
         if isinstance(slave_ids, int):
@@ -102,3 +98,27 @@ class WrappedCanbus:
                 return match
 
         return None
+
+    def set_socket_filter(self, slave_ids: list[int], mask: int = 0xFC0):
+        """Set a filter for can ids on the socket.
+
+        Args:
+            slave_ids: a list of slave_ids to filter from.
+        """
+
+        if not slave_ids:
+            print("[WARN] No slave ids passed in.")
+            return
+
+        if isinstance(slave_ids, int):  # convert int to int list
+            slave_ids = {slave_ids}
+
+        filter_data = b""
+
+        for sid in slave_ids:
+            # shift slave ID into correct position
+            can_id = (sid & 0x3F) << 6
+            filter_data += struct.pack("II", can_id, mask)
+
+        if filter_data:
+            self.s.setsockopt(socket.SOL_CAN_RAW, socket.CAN_RAW_FILTER, filter_data)

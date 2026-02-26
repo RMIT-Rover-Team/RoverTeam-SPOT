@@ -7,5 +7,10 @@
     // 0-9:     TIER 1 = critical items
     // 10-99:   TIER 2 = standard, non-breaking items
     // 100+:    TIER 3 = experimental, low-priority
-    "priority": 10
+    "priority": 10,
+    "args": {
+        // "--ws_host": "0.0.0.0",
+        // "--ws_port": "5001",
+        "--can_port": "vcan0"
+    }
 }
