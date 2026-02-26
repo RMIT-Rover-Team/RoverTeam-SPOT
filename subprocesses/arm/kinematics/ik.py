@@ -149,6 +149,7 @@ class RobotArm6DOF:
         max_reach = self.a2 + self.l
 
         # ---- Only clamp if truly unreachable ----
+        # Only clamp if wrist is truly unreachable
         if m > max_reach + epsilon:
             success = False
             # scale down vector to max reach
@@ -156,12 +157,15 @@ class RobotArm6DOF:
             mx *= scale
             my *= scale
             # update wrist position (clamped)
-            xw_clamped = (mx + self.a1) * (xw / x_prime) if x_prime != 0 else 0.0
-            yw_clamped = (mx + self.a1) * (yw / x_prime) if x_prime != 0 else 0.0
-            zw_clamped = my + self.d1
-            print(f"[IK DEBUG] Target unreachable, clamping wrist to: x={xw_clamped:.3f}, y={yw_clamped:.3f}, z={zw_clamped:.3f}")
-            xw, yw, zw = xw_clamped, yw_clamped, zw_clamped
-        achievable_pos = (xw, yw, zw)
+            xw = (mx + self.a1) * (xw / x_prime) if x_prime != 0 else 0.0
+            yw = (mx + self.a1) * (yw / x_prime) if x_prime != 0 else 0.0
+            zw = my + self.d1
+            print(f"[IK DEBUG] Target unreachable, clamping wrist to: x={xw:.3f}, y={yw:.3f}, z={zw:.3f}")
+            achievable_pos = (xw, yw, zw)
+        else:
+            # Target is reachable, use requested position
+            print(f"[IK DEBUG] Target reachable, using requested wrist position: x={xw:.3f}, y={yw:.3f}, z={zw:.3f}")
+            achievable_pos = (xw, yw, zw)
 
         # ---- Helper for safe acos ----
         def safe_acos(val):
