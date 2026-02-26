@@ -3,6 +3,7 @@ import argparse
 import json
 import logging
 import signal
+import time
 
 from sharedlib.controlsocket.controlsocket import ControlSocket
 from sharedlib.controlsocket import schema
@@ -34,7 +35,7 @@ ACTUATOR_ID = 0x142
 actuator = MyActuator(ACTUATOR_NAME, ACTUATOR_ID)
 manager: ActuatorManager | None = None
 
-# Current velocity command (deg/sec)
+# Velocity command (deg/sec)
 commanded_velocity = 0.0
 
 # Shutdown flag
@@ -45,9 +46,6 @@ shutdown_event = asyncio.Event()
 # INPUT CALLBACK
 # -------------------------
 async def handle_pitch_input(value: float):
-    """
-    Pitch input is degrees per second.
-    """
     global commanded_velocity
     commanded_velocity = value
 
@@ -60,10 +58,29 @@ async def control_loop(control_socket: ControlSocket, interval: float):
 
         actuator.set_velocity(commanded_velocity)
 
-        # Minimal telemetry
         await control_socket.outputs.update_output(
             "pitch_velocity_cmd",
             commanded_velocity,
+        )
+
+        await asyncio.sleep(interval)
+
+
+# -------------------------
+# HEARTBEAT LOOP
+# -------------------------
+async def heartbeat_loop(control_socket: ControlSocket, interval: float):
+    while not shutdown_event.is_set():
+
+        ts = time.time()
+
+        # Local log (useful for journalctl)
+        logger.info("HEARTBEAT")
+
+        # Websocket output
+        await control_socket.outputs.update_output(
+            "heartbeat",
+            ts,
         )
 
         await asyncio.sleep(interval)
@@ -85,6 +102,7 @@ async def main(
     ws_port: int,
     ws_name: str,
     status_interval: float,
+    heartbeat_interval: float,
 ):
     global manager
 
@@ -92,7 +110,7 @@ async def main(
     loop.add_signal_handler(signal.SIGINT, request_shutdown)
     loop.add_signal_handler(signal.SIGTERM, request_shutdown)
 
-    # Start CAN
+    # CAN setup
     can_client = CANClient()
     await can_client.start()
 
@@ -100,7 +118,7 @@ async def main(
     manager.register(actuator)
     asyncio.create_task(manager.loop())
 
-    # Control socket
+    # WebSocket setup
     control_socket = ControlSocket(
         ws_host,
         ws_port,
@@ -108,15 +126,16 @@ async def main(
         allow_multiple_clients=False,
     )
 
-    # Register pitch axis only (deg/sec)
+    # Register pitch input (deg/sec)
     schema.register_axis(
         control_socket.inputs,
         "pitch",
         callback=lambda v: asyncio.create_task(handle_pitch_input(v)),
     )
 
-    # Minimal output
+    # Outputs
     control_socket.outputs.register_output("pitch_velocity_cmd")
+    control_socket.outputs.register_output("heartbeat")
 
     await control_socket.start()
 
@@ -128,13 +147,19 @@ async def main(
         control_loop(control_socket, status_interval)
     )
 
+    heartbeat_task = asyncio.create_task(
+        heartbeat_loop(control_socket, heartbeat_interval)
+    )
+
     # Wait for shutdown
     await shutdown_event.wait()
 
-    # Stop motor safely
+    # Stop actuator safely
     actuator.set_velocity(0.0)
 
     control_task.cancel()
+    heartbeat_task.cancel()
+
     await asyncio.sleep(0)
 
     await control_socket.stop()
@@ -152,6 +177,7 @@ if __name__ == "__main__":
     parser.add_argument("--ws_port", type=int, default=8766)
     parser.add_argument("--ws_name", type=str, default="single_velocity")
     parser.add_argument("--status_interval", type=float, default=0.02)
+    parser.add_argument("--heartbeat", type=float, default=5.0)
 
     args = parser.parse_args()
 
@@ -161,5 +187,6 @@ if __name__ == "__main__":
             args.ws_port,
             args.ws_name,
             args.status_interval,
+            args.heartbeat_interval,
         )
     )
