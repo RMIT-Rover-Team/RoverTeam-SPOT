@@ -187,6 +187,6 @@ if __name__ == "__main__":
             args.ws_port,
             args.ws_name,
             args.status_interval,
-            args.heartbeat_interval,
+            args.heartbeat,
         )
     )
