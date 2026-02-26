@@ -31,7 +31,7 @@ def test_read_msg():
 def test_read_msg_from():
     bus = WrappedCanbus("vcan0")
 
-    master_id, slave_id_1, slave_id_2 = 0x01, 0x03, 0x4
+    master_id, slave_id_1, slave_id_2 = 0x01, 0x03, 0x04
     header_1 = 0
     header_1 = f"{((slave_id_1 & 0x3F) << 6 | (master_id & 0x3F)):03x}"
 
@@ -45,7 +45,7 @@ def test_read_msg_from():
     subprocess.run(["cansend", "vcan0", f"{header_2}#{data_str_2}"])
 
     time.sleep(0.01)
-    frame = bus.read_msg_from({0x101}, 0xFFF)
+    frame = bus.read_msg_from(0x04)
 
     assert frame is not None
     assert frame.can_id == 0x101
@@ -54,7 +54,7 @@ def test_read_msg_from():
     assert frame.can_id != 0xC1
     assert frame.data != b"\x12"
 
-    frame = bus.read_msg_from({0xC1}, 0xFFF)
+    frame = bus.read_msg_from(0x03)
 
     assert frame is not None
     assert frame.can_id == 0xC1
@@ -62,3 +62,30 @@ def test_read_msg_from():
 
     assert frame.can_id != 0x101
     assert frame.data != b"\x34"
+
+
+def test_set_socket_filter():
+    bus = WrappedCanbus("vcan0")
+
+    master_id, slave_id_1, slave_id_2 = 0x01, 0x03, 0x04
+    header_1 = 0
+    header_1 = f"{((slave_id_1 & 0x3F) << 6 | (master_id & 0x3F)):03x}"
+
+    header_2 = 0
+    header_2 = f"{((slave_id_2 & 0x3F) << 6) | (master_id & 0x3F):03x}"
+
+    data_str_1 = "12"
+    data_str_2 = "34"
+
+    bus.set_socket_filter(0x04)
+
+    subprocess.run(["cansend", "vcan0", f"{header_1}#{data_str_1}"])
+    subprocess.run(["cansend", "vcan0", f"{header_2}#{data_str_2}"])
+
+    frame = bus.read_msg_from(0x03)
+    assert frame is None
+
+    frame = bus.read_msg_from(0x04)
+    assert frame is not None
+    assert frame.can_id == 0x101
+    assert frame.data == b"\x34"

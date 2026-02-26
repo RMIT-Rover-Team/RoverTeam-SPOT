@@ -24,11 +24,32 @@ class WrappedCanbus:
             self.s.bind((interface_name,))
             self.s.setblocking(False)
 
-            self.can_buffer: deque[CanFrame] = deque()
+            self.can_buffer: deque[CanFrame] = deque(maxlen=500)
             self.telemetry_ids: set[int] = {0x01, 0x02, 0x03}
         except OSError as e:
             warnings.warn(f"Open Socket Error:, {e}")
             raise
+
+    def set_socket_filter(self, slave_ids):
+        filter_data = b""
+
+        if not slave_ids:
+            return
+
+        if isinstance(slave_ids, int):
+            slave_ids = {slave_ids}
+
+        mask = 0xFC0
+
+        filter_data = b""
+
+        for sid in slave_ids:
+            # Shift the slave ID into the correct position
+            can_id = (sid & 0x3F) << 6
+            filter_data += struct.pack("II", can_id, mask)
+
+        if filter_data:
+            self.s.setsockopt(socket.SOL_CAN_RAW, socket.CAN_RAW_FILTER, filter_data)
 
     def read_from_socket(self) -> Optional[CanFrame]:
         try:
@@ -59,25 +80,25 @@ class WrappedCanbus:
 
             self.can_buffer.append(frame)
 
-            if len(self.can_buffer) > 500:
-                self.can_buffer = self.can_buffer.popright()
-
     def read_msg(self) -> CanFrame:
         self.drain_socket()
 
         if not self.can_buffer:
             return None
-        print(self.can_buffer)
         return self.can_buffer.popleft()
 
-    def read_msg_from(self, ids, mask):
+    def read_msg_from(self, slave_ids, mask=0xFC0):
         self.drain_socket()
 
+        if isinstance(slave_ids, int):
+            slave_ids = {slave_ids}
+
+        target_ids = {(sid & 0x3F) << 6 for sid in slave_ids}
+
         for i, frame in enumerate(self.can_buffer):
-            if any((frame.can_id & mask) == (tid & mask) for tid in ids):
+            if (frame.can_id & mask) in target_ids:
                 match = self.can_buffer[i]
                 del self.can_buffer[i]
-                print(match)
                 return match
 
         return None
