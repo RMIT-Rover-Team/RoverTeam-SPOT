@@ -74,8 +74,9 @@ class ProcessManager:
 
     async def start(self, sub: Subsystem, extra_args: list[str] = None):
         """
-        Start a single subsystem, merging configured args with command-line overrides.
-        Later arguments override duplicates from config.
+        Start a single subsystem.
+        - sub.extra_args are used as-is (allow duplicates)
+        - runtime extra_args are appended at the end
         """
 
         if sub.process and sub.process.returncode is None:
@@ -91,41 +92,13 @@ class ProcessManager:
             str(HEARTBEAT_INTERVAL),
         ]
 
-        # Merge configured extra_args with runtime extra_args
-        merged_args = {}
-
-        # 1️⃣ Config args from Subsystem (sub.extra_args)
+        # Append config args exactly as they are
         if sub.extra_args:
-            for arg in sub.extra_args:
-                if arg.startswith("--") and "=" in arg:
-                    key, val = arg.split("=", 1)
-                    merged_args[key] = val
-                else:
-                    merged_args[arg] = None
+            cmd.extend(sub.extra_args)
 
-        # 2️⃣ Extra args passed at runtime (override duplicates)
+        # Append runtime args (overrides handled manually if needed)
         if extra_args:
-            it = iter(extra_args)
-            for arg in it:
-                if arg.startswith("--"):
-                    # --key=value OR --key val
-                    if "=" in arg:
-                        key, val = arg.split("=", 1)
-                    else:
-                        key = arg
-                        val = next(it, None)
-                    merged_args[key] = val
-                else:
-                    merged_args[arg] = None
-
-        # Reconstruct final cmd
-        for key, val in merged_args.items():
-            cmd.append(key)
-            # If flag has no value, append "1" as default
-            if val is None:
-                cmd.append("1")
-            else:
-                cmd.append(val)
+            cmd.extend(extra_args)
 
         # Launch subprocess
         try:
@@ -146,9 +119,11 @@ class ProcessManager:
 
             self.log.success(f"{sub.name} started with args: {' '.join(cmd[3:])}")
 
-            # Start stream readers
-            asyncio.create_task(self._read_stream(sub, sub.process.stdout, "stdout"))
-            asyncio.create_task(self._read_stream(sub, sub.process.stderr, "stderr"))
+            # Start stream readers safely
+            sub._tasks = [
+                asyncio.create_task(self._read_stream(sub, sub.process.stdout, "stdout")),
+                asyncio.create_task(self._read_stream(sub, sub.process.stderr, "stderr")),
+            ]
 
         except Exception as e:
             self.log.error(f"Failed to start {sub.name}: {e}")
