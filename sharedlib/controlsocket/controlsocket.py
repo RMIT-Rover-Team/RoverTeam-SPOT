@@ -6,7 +6,9 @@ from .output import OutputRegistry
 
 
 class ControlSocket:
-    def __init__(self, host: str, port: int, name: str, *, allow_multiple_clients: bool = False):
+    def __init__(
+        self, host: str, port: int, name: str, *, allow_multiple_clients: bool = False
+    ):
         self._server = WebSocketServer(
             host,
             port,

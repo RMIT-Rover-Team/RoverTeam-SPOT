@@ -4,9 +4,10 @@ import json
 import logging
 import signal
 
-from sharedlib.websocket.server import WebSocketServer
+from subprocesses.pdb.telemetry.manager import PDBTelemetryManager
+
 from sharedlib.canbus.client import CANClient
-from telemetry.telemetry import PDBTelemetryManager
+from sharedlib.controlsocket.controlsocket import ControlSocket
 
 
 # -------------------------
@@ -18,10 +19,11 @@ class JsonHandler(logging.StreamHandler):
         print(json.dumps(log_obj), flush=True)
 
 
-logger = logging.getLogger()
-logger.setLevel(logging.DEBUG)
+logger = logging.getLogger("pdb")
+logger.setLevel(logging.INFO)
 logger.addHandler(JsonHandler())
 
+pdb_manager: PDBTelemetryManager | None = None
 shutdown_event = asyncio.Event()
 
 pdb_telemetry_ids = {
@@ -32,8 +34,8 @@ pdb_telemetry_ids = {
 }
 
 
-async def heartbeat_loop(interval: float):
-    while True:
+async def heartbeat_loop(control_socket: ControlSocket, interval: float):
+    while not shutdown_event.is_set():
         print("HEARTBEAT")
         await asyncio.sleep(interval)
 
@@ -41,12 +43,21 @@ async def heartbeat_loop(interval: float):
 # -------------------------
 # Extra Tasks
 # -------------------------
+async def pdb_telemetry_loop(
+    pdb_manager: PDBTelemetryManager, control_socket: ControlSocket, interval: float
+):
+    while not shutdown_event.is_set():
+        # 1. Get the data
+        data = pdb_manager.get_snapshot()
 
+        logger.info(data["buck1"][0])
 
-async def some_task():
-    while True:
-        # Intervalled code here
-        await asyncio.sleep(10)
+        # 2. Send to Frontend via ControlSocket
+        # This assumes you registered "pdb_data" in the main function
+        await control_socket.outputs.update_output("pdb_data", data)
+
+        # 3. Wait
+        await asyncio.sleep(interval)
 
 
 # -------------------------
@@ -75,49 +86,51 @@ async def main(
     # CAN setup
     # -------------------------
     can_client = CANClient()
-    try:
-        await can_client.start()
-    except Exception as e:
-        logger.warning(e)
+    await can_client.start()
+
     # BUCK 1: 6
     # BUCK 2: 7
     # SWITCH: 10
-    PDBTelemetryManager.register_all()
-    # asyncio.create_task()
+    pdb_manager = PDBTelemetryManager(can_client)
+    pdb_manager.register_all()
 
+    # -------------------------
+    # Websocket
+    # -------------------------
+    control_socket = ControlSocket(ws_host, ws_port, ws_name)
+    control_socket.outputs.register_output("pdb_data")
+    control_socket.outputs.register_output("heartbeat")
+
+    await control_socket.start()
     # Required tasks
-    heartbeat_task = asyncio.create_task(heartbeat_loop(heartbeat_interval))
 
-    # Extra tasks
-    webrtc_task = asyncio.create_task(some_task())
+    pdb_task = asyncio.create_task(
+        pdb_telemetry_loop(pdb_manager, control_socket, interval=0.1)
+    )
+    heartbeat_task = asyncio.create_task(
+        heartbeat_loop(control_socket, heartbeat_interval)
+    )
 
-    try:
-        await asyncio.gather(
-            # Required tasks
-            heartbeat_task,
-            # Extra tasks
-            webrtc_task,
-        )
-    except asyncio.CancelledError:
-        logging.info("Shutdown received, cancelling tasks")
-    finally:
-        # Required tasks
-        heartbeat_task.cancel()
+    # Wait for shutdown...
+    await shutdown_event.wait()
 
-        # Extra tasks
-        webrtc_task.cancel()
+    # Cleanup
+    pdb_task.cancel()
+    heartbeat_task.cancel()
 
-        # propagate cancellation
-        await asyncio.sleep(0)
+    await asyncio.sleep(0)
+
+    await control_socket.stop()
+    await can_client.close()
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--ws_host", type=str, default="0.0.0.0")
     parser.add_argument("--ws_port", type=int, default=8766)
-    parser.add_argument("--ws_name", type=str, default="odrive_velocity")
+    parser.add_argument("--ws_name", type=str, default="pdb_telemetry")
     parser.add_argument("--status_interval", type=float, default=0.02)
-    parser.add_argument("--heartbeat", type=float, default=5.0)
+    parser.add_argument("--heartbeat", type=float, default=2.0)
 
     args = parser.parse_args()
 

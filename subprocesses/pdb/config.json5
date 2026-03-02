@@ -1,11 +1,11 @@
 {
     // Subprocess name
     "name": "pdb",
-    // Priority:
-    // LOWER numbers have HIGHER priority
-    // -1:      ignored (templates, temp., etc.)
-    // 0-9:     TIER 1 = critical items
-    // 10-99:   TIER 2 = standard, non-breaking items
-    // 100+:    TIER 3 = experimental, low-priority
-    "priority": 10
+    "priority": 20,
+    "args": {
+        "--ws_host": "0.0.0.0",
+        "--ws_port": "5000",
+        "--ws_name": "pdb_telemetry",
+        "--status_interval": "0.05"
+    }
 }

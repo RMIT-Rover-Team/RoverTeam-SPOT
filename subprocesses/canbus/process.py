@@ -13,9 +13,11 @@ import zmq.asyncio
 # -------------------------
 try:
     import can  # python-can driver
+
     CAN_AVAILABLE = True
 except ImportError:
     CAN_AVAILABLE = False
+
 
 # -------------------------
 # LOGGING
@@ -32,6 +34,7 @@ class JsonHandler(logging.StreamHandler):
             log_obj["error"] = record.error
         print(json.dumps(log_obj), flush=True)
 
+
 logger = logging.getLogger("canbus")
 logger.setLevel(logging.DEBUG)
 logger.addHandler(JsonHandler())
@@ -41,6 +44,7 @@ logger.addHandler(JsonHandler())
 # -------------------------
 if sys.platform.startswith("win"):
     from asyncio import WindowsSelectorEventLoopPolicy
+
     asyncio.set_event_loop_policy(WindowsSelectorEventLoopPolicy())
 
 # -------------------------
@@ -53,6 +57,7 @@ parser.add_argument("--can_type", type=str, default="socketcan")
 parser.add_argument("--pub_port", type=int, default=5556)
 parser.add_argument("--rep_port", type=int, default=5557)
 args, unknown_args = parser.parse_known_args()
+
 
 # -------------------------
 # CAN DAEMON
@@ -82,7 +87,10 @@ class CANDaemon:
             try:
                 self.bus = can.interface.Bus(channel=channel, interface=bustype)
                 self.state = "UP"
-                logger.info("CAN bus initialized", extra={"data": {"channel": channel, "interface": bustype}})
+                logger.info(
+                    "CAN bus initialized",
+                    extra={"data": {"channel": channel, "interface": bustype}},
+                )
             except Exception as e:
                 self.bus = None
                 self.state = "DOWN"
@@ -142,7 +150,9 @@ class CANDaemon:
 
                 msg_id = int(msg[0])
                 data = msg[1]
-                can_msg = can.Message(arbitration_id=msg_id, data=data, is_extended_id=False)
+                can_msg = can.Message(
+                    arbitration_id=msg_id, data=data, is_extended_id=False
+                )
                 self.bus.send(can_msg)
                 await self.rep.send_string("OK")
             except Exception as e:
@@ -161,10 +171,14 @@ class CANDaemon:
                     continue
                 msg_id = int(msg[0])
                 data = msg[1]
-                can_msg = can.Message(arbitration_id=msg_id, data=data, is_extended_id=False)
+                can_msg = can.Message(
+                    arbitration_id=msg_id, data=data, is_extended_id=False
+                )
                 self.bus.send(can_msg)
             except Exception as e:
-                logger.warning(f"Error handling push send: {e}", extra={"error": str(e)})
+                logger.warning(
+                    f"Error handling push send: {e}", extra={"error": str(e)}
+                )
                 await asyncio.sleep(0.001)
 
     async def stop(self):
@@ -180,6 +194,7 @@ class CANDaemon:
         self.ctx.term()
         logger.info("CAN daemon stopped")
 
+
 # -------------------------
 # HEARTBEAT
 # -------------------------
@@ -187,6 +202,7 @@ async def heartbeat_loop(interval: float):
     while True:
         print("HEARTBEAT")
         await asyncio.sleep(interval)
+
 
 # -------------------------
 # MAIN
@@ -196,7 +212,7 @@ async def main():
         channel=args.can_channel,
         bustype=args.can_type,
         pub_port=args.pub_port,
-        rep_port=args.rep_port
+        rep_port=args.rep_port,
     )
     heartbeat_task = asyncio.create_task(heartbeat_loop(args.heartbeat))
 
@@ -208,6 +224,7 @@ async def main():
         heartbeat_task.cancel()
         await daemon.stop()
         await asyncio.sleep(0)
+
 
 if __name__ == "__main__":
     asyncio.run(main())

@@ -5,8 +5,9 @@
         "canbus",
         "telemetry",
         "cameras",
+        "pdb",
         // Manually start arm, excavator, or science depending on payload
-        "arm"
+        // "arm"
         //"excavator"
     ]
 }

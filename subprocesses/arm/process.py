@@ -29,12 +29,9 @@ logger.addHandler(JsonHandler())
 # ODRIVE CONFIG
 # -------------------------
 ACTUATOR_NAME = "drive_axis"
-ODRIVE_NODE_ID = 0x4   # change to match your ODrive node ID
+ODRIVE_NODE_ID = 0x4  # change to match your ODrive node ID
 
-actuator = ODriveActuator(
-    name=ACTUATOR_NAME,
-    node_id=ODRIVE_NODE_ID
-)
+actuator = ODriveActuator(name=ACTUATOR_NAME, node_id=ODRIVE_NODE_ID)
 
 manager: ActuatorManager | None = None
 
@@ -58,7 +55,6 @@ async def handle_pitch_input(value: float):
 # -------------------------
 async def control_loop(control_socket: ControlSocket, interval: float):
     while not shutdown_event.is_set():
-
         # Convert deg/sec -> turns/sec (ODrive native)
         turns_per_sec = commanded_velocity_deg / 360.0
 
@@ -77,7 +73,6 @@ async def control_loop(control_socket: ControlSocket, interval: float):
 # -------------------------
 async def heartbeat_loop(control_socket: ControlSocket, interval: float):
     while not shutdown_event.is_set():
-
         await control_socket.outputs.update_output(
             "heartbeat",
             True,
@@ -146,13 +141,9 @@ async def main(
 
     await control_socket.start()
 
-    logger.info(
-        f"ODrive velocity control running on ws://{ws_host}:{ws_port}"
-    )
+    logger.info(f"ODrive velocity control running on ws://{ws_host}:{ws_port}")
 
-    control_task = asyncio.create_task(
-        control_loop(control_socket, status_interval)
-    )
+    control_task = asyncio.create_task(control_loop(control_socket, status_interval))
 
     heartbeat_task = asyncio.create_task(
         heartbeat_loop(control_socket, heartbeat_interval)
