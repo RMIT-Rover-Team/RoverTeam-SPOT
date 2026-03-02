@@ -11,7 +11,7 @@ from sharedlib.actuator.actuator_manager import ActuatorManager
 from sharedlib.actuator.odrive import ODriveActuator
 from sharedlib.actuator.myactuator import MyActuator
 from sharedlib.actuator.dummyactuator import DummyActuator
-
+from sharedlib.actuator.payloadActuator import PayloadActuator
 
 # -------------------------
 # LOGGING
@@ -43,12 +43,18 @@ def request_shutdown():
 # -------------------------
 # All joints are velocity-controlled (deg/sec)
 ACTUATORS = [
-    ("J1", DummyActuator("J1")),
-    ("J2", DummyActuator("J2")),
-    ("J3", MyActuator("J3", 0x142)),
-    ("J4", ODriveActuator("J4", 0x4)),
-    ("J5", MyActuator("J5", 0x143)),
-    ("J6", MyActuator("J6", 0x144)),
+    ("J1",   DummyActuator("J1")),
+    ("J2",   DummyActuator("J2")),
+    ("J3",   MyActuator("J3", 0x142)),
+    ("J4",   ODriveActuator("J4", 0x4)),
+    ("J5",   MyActuator("J5", 0x143)),
+    ("J6",   MyActuator("J6", 0x144)),
+    ("Grip", PayloadActuator("Grip", 0)),
+    ("Poke", PayloadActuator("Poke", 1))
+
+    #For debugging
+    #("Grip", DummyActuator("Grip")),
+    #("Poke", DummyActuator("Poke"))
 ]
 
 manager: ActuatorManager | None = None
