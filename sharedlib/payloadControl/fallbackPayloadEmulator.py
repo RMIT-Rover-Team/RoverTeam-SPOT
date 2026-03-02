@@ -1,4 +1,4 @@
-class Emulator:
+class PyRover:
     def __init__(self, canbus, masterID):
         print("IMPORT FAIL EMULATING PAYLOAD")
         pass

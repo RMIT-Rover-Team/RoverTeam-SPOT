@@ -5,4 +5,4 @@ try:
     from . import pyRover as pyRover
 except (ImportError, OSError):
     # Fall back to emulator if native import fails
-    from .fallbackPayloadEmulator import Emulator as pyRover
+    from . import fallbackPayloadEmulator as pyRover
