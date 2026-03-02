@@ -6,7 +6,7 @@
         "telemetry",
         "cameras",
         // Manually start arm, excavator, or science depending on payload
-        "arm"
-        //"excavator"
+        // "arm"
+        // "excavator"
     ]
 }
