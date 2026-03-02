@@ -47,16 +47,13 @@ async def pdb_telemetry_loop(
     pdb_manager: PDBTelemetryManager, control_socket: ControlSocket, interval: float
 ):
     while not shutdown_event.is_set():
-        # 1. Get the data
+        # Get the data
         data = pdb_manager.get_snapshot()
 
-        logger.info(data["buck1"][0])
-
-        # 2. Send to Frontend via ControlSocket
+        # Send to Frontend via ControlSocket
         # This assumes you registered "pdb_data" in the main function
         await control_socket.outputs.update_output("pdb_data", data)
 
-        # 3. Wait
         await asyncio.sleep(interval)
 
 
@@ -105,7 +102,7 @@ async def main(
     # Required tasks
 
     pdb_task = asyncio.create_task(
-        pdb_telemetry_loop(pdb_manager, control_socket, interval=0.1)
+        pdb_telemetry_loop(pdb_manager, control_socket, interval=1)
     )
     heartbeat_task = asyncio.create_task(
         heartbeat_loop(control_socket, heartbeat_interval)
