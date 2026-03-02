@@ -74,7 +74,7 @@ class ProcessManager:
 
     async def start(self, sub: Subsystem, extra_args: list[str] = None):
         """
-        Start a single subsystem, merging configured args with command-line overrides.
+        Start a single subsystem, merging configured args with runtime extra_args.
         Later arguments override duplicates from config.
         """
 
@@ -91,43 +91,50 @@ class ProcessManager:
             str(HEARTBEAT_INTERVAL),
         ]
 
-        # Merge configured extra_args with runtime extra_args
+        # ----------------------------
+        # Merge configured and runtime args
+        # ----------------------------
         merged_args = {}
 
-        # 1️⃣ Config args from Subsystem (sub.extra_args)
-        if sub.extra_args:
-            for arg in sub.extra_args:
-                if arg.startswith("--") and "=" in arg:
-                    key, val = arg.split("=", 1)
-                    merged_args[key] = val
-                else:
-                    merged_args[arg] = None
+        BOOLEAN_FLAGS = {"--dev", "--test"}  # Only these can be appended as "1" if no value
 
-        # 2️⃣ Extra args passed at runtime (override duplicates)
-        if extra_args:
-            it = iter(extra_args)
+        def parse_arg(arg_list):
+            it = iter(arg_list)
             for arg in it:
                 if arg.startswith("--"):
-                    # --key=value OR --key val
                     if "=" in arg:
                         key, val = arg.split("=", 1)
                     else:
                         key = arg
-                        val = next(it, None)
+                        val = next(it, None)  # may be None
                     merged_args[key] = val
                 else:
                     merged_args[arg] = None
 
+        # 1️⃣ Configured args
+        if sub.extra_args:
+            parse_arg(sub.extra_args)
+
+        # 2️⃣ Runtime args (override duplicates)
+        if extra_args:
+            parse_arg(extra_args)
+
+        # ----------------------------
         # Reconstruct final cmd
+        # ----------------------------
         for key, val in merged_args.items():
             cmd.append(key)
-            # If flag has no value, append "1" as default
             if val is None:
-                cmd.append("1")
+                if key in BOOLEAN_FLAGS:
+                    cmd.append("1")  # boolean flags default to "1"
+                else:
+                    raise ValueError(f"Argument {key} requires a value")
             else:
-                cmd.append(val)
+                cmd.append(str(val))
 
+        # ----------------------------
         # Launch subprocess
+        # ----------------------------
         try:
             env = os.environ.copy()
             ROOT = Path(sub.path).resolve().parents[2]
@@ -146,9 +153,13 @@ class ProcessManager:
 
             self.log.success(f"{sub.name} started with args: {' '.join(cmd[3:])}")
 
-            # Start stream readers
-            asyncio.create_task(self._read_stream(sub, sub.process.stdout, "stdout"))
-            asyncio.create_task(self._read_stream(sub, sub.process.stderr, "stderr"))
+            # Start stream readers safely
+            tasks = [
+                asyncio.create_task(self._read_stream(sub, sub.process.stdout, "stdout")),
+                asyncio.create_task(self._read_stream(sub, sub.process.stderr, "stderr")),
+            ]
+            # store tasks if you want to cancel later
+            sub._tasks = tasks
 
         except Exception as e:
             self.log.error(f"Failed to start {sub.name}: {e}")
