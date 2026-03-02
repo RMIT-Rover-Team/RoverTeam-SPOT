@@ -26,7 +26,6 @@ logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 logger.addHandler(JsonHandler())
 
-
 # -------------------------
 # SHUTDOWN FLAG
 # -------------------------
@@ -39,36 +38,9 @@ def request_shutdown():
 
 
 # -------------------------
-# ACTUATOR CONFIGURATION
-# -------------------------
-# All joints are velocity-controlled (deg/sec)
-ACTUATORS = [
-    ("J1",   DummyActuator("J1")),
-    ("J2",   DummyActuator("J2")),
-    ("J3",   MyActuator("J3", 0x142)),
-    ("J4",   ODriveActuator("J4", 0x4)),
-    ("J5",   MyActuator("J5", 0x143)),
-    ("J6",   MyActuator("J6", 0x144)),
-    ("Grip", PayloadActuator("Grip", 0)),
-    ("Poke", PayloadActuator("Poke", 1))
-
-    #For debugging
-    #("Grip", DummyActuator("Grip")),
-    #("Poke", DummyActuator("Poke"))
-]
-
-manager: ActuatorManager | None = None
-
-# Store commanded velocities (deg/sec)
-commanded_inputs: dict[str, float] = {
-    joint: 0.0 for joint, _ in ACTUATORS
-}
-
-
-# -------------------------
 # INPUT CALLBACK FACTORY
 # -------------------------
-def make_input_callback(joint_name: str):
+def make_input_callback(joint_name: str, commanded_inputs: dict):
     async def callback(value: float):
         commanded_inputs[joint_name] = value
     return callback
@@ -77,23 +49,18 @@ def make_input_callback(joint_name: str):
 # -------------------------
 # CONTROL LOOP
 # -------------------------
-async def control_loop(control_socket: ControlSocket, interval: float):
+async def control_loop(actuators, commanded_inputs, control_socket: ControlSocket, interval: float):
     while not shutdown_event.is_set():
-        for joint, actuator in ACTUATORS:
+        for joint, actuator in actuators:
             target_deg_per_sec = commanded_inputs[joint]
-
-            # ODrive expects turns/sec
             if isinstance(actuator, ODriveActuator):
                 actuator.set_velocity(target_deg_per_sec / 360.0)
             else:
                 actuator.set_velocity(target_deg_per_sec)
-
-            # Publish commanded velocity
             await control_socket.outputs.update_output(
                 f"{joint}_velocity_cmd",
                 target_deg_per_sec,
             )
-
         await asyncio.sleep(interval)
 
 
@@ -115,33 +82,55 @@ async def main(
     ws_name: str,
     status_interval: float,
     heartbeat_interval: float,
+    dev: bool = False,
 ):
-    global manager
+    # -------------------------
+    # ACTUATORS
+    # -------------------------
+    if dev:
+        actuators = [
+            ("J1", DummyActuator("J1")),
+            ("J2", DummyActuator("J2")),
+            ("J3", DummyActuator("J3")),
+            ("J4", DummyActuator("J4")),
+            ("J5", DummyActuator("J5")),
+            ("J6", DummyActuator("J6")),
+            ("Grip", DummyActuator("Grip")),
+            ("Poke", DummyActuator("Poke")),
+        ]
+    else:
+        actuators = [
+            ("J1", DummyActuator("J1")),
+            ("J2", MyActuator("J2", 0x141)),
+            ("J3", MyActuator("J3", 0x142)),
+            ("J4", ODriveActuator("J4", 0x15)),
+            ("J5", MyActuator("J5", 0x143)),
+            ("J6", MyActuator("J6", 0x144)),
+            ("Grip", PayloadActuator("Grip", 0)),
+            ("Poke", PayloadActuator("Poke", 1)),
+        ]
 
+    commanded_inputs = {joint: 0.0 for joint, _ in actuators}
+
+    # -------------------------
+    # LOOP AND SIGNALS
+    # -------------------------
     loop = asyncio.get_running_loop()
     loop.add_signal_handler(signal.SIGINT, request_shutdown)
     loop.add_signal_handler(signal.SIGTERM, request_shutdown)
 
     # -------------------------
-    # CAN Setup
+    # CAN CLIENT
     # -------------------------
     can_client = CANClient()
     await can_client.start()
 
     manager = ActuatorManager(can_client, rate_hz=50.0)
-
-    for _, actuator in ACTUATORS:
+    for _, actuator in actuators:
         manager.register(actuator)
 
-    asyncio.create_task(manager.loop())
-
-    # Arm ODrive actuators
-    for _, actuator in ACTUATORS:
-        if isinstance(actuator, ODriveActuator):
-            actuator.request_arm()
-
     # -------------------------
-    # WebSocket Setup
+    # WEBSOCKET SETUP
     # -------------------------
     control_socket = ControlSocket(
         ws_host,
@@ -150,50 +139,64 @@ async def main(
         allow_multiple_clients=False,
     )
 
-    # Register velocity inputs (deg/sec)
-    for joint, _ in ACTUATORS:
+    # Register velocity inputs
+    for joint, _ in actuators:
         schema.register_axis(
             control_socket.inputs,
             joint,
             callback=lambda v, name=joint: asyncio.create_task(
-                make_input_callback(name)(v)
+                make_input_callback(name, commanded_inputs)(v)
             ),
         )
 
     # Register outputs
-    for joint, _ in ACTUATORS:
+    for joint, _ in actuators:
         control_socket.outputs.register_output(f"{joint}_velocity_cmd")
-
     control_socket.outputs.register_output("heartbeat")
 
     await control_socket.start()
-
     logger.info(f"Velocity control running on ws://{ws_host}:{ws_port}")
 
-    control_task = asyncio.create_task(
-        control_loop(control_socket, status_interval)
-    )
-    heartbeat_task = asyncio.create_task(
-        heartbeat_loop(control_socket, heartbeat_interval)
-    )
+    # -------------------------
+    # CREATE TASKS ARRAY
+    # -------------------------
+    tasks = [
+        asyncio.create_task(manager.loop(), name="manager_loop"),
+        asyncio.create_task(control_loop(actuators, commanded_inputs, control_socket, status_interval), name="control_loop"),
+        asyncio.create_task(heartbeat_loop(control_socket, heartbeat_interval), name="heartbeat_loop"),
+    ]
 
+    # Arm ODrive actuators
+    for _, actuator in actuators:
+        if isinstance(actuator, ODriveActuator):
+            actuator.request_arm()
+
+    # -------------------------
+    # WAIT FOR SHUTDOWN
+    # -------------------------
     await shutdown_event.wait()
 
+    logger.info("Shutting down tasks...")
+
+    # Cancel all tasks
+    for t in tasks:
+        t.cancel()
+
+    # Await cancellation
+    await asyncio.gather(*tasks, return_exceptions=True)
+
     # -------------------------
-    # SAFE STOP
+    # SAFE STOP ACTUATORS
     # -------------------------
     logger.info("Stopping actuators")
-
-    for _, actuator in ACTUATORS:
+    for _, actuator in actuators:
         actuator.set_velocity(0.0)
         if isinstance(actuator, ODriveActuator):
             actuator.request_disarm()
 
-    control_task.cancel()
-    heartbeat_task.cancel()
-
-    await asyncio.sleep(0)
-
+    # -------------------------
+    # CLEANUP
+    # -------------------------
     await control_socket.stop()
     await can_client.close()
 
@@ -210,6 +213,7 @@ if __name__ == "__main__":
     parser.add_argument("--ws_name", type=str, default="velocity_control")
     parser.add_argument("--status_interval", type=float, default=0.02)
     parser.add_argument("--heartbeat", type=float, default=5.0)
+    parser.add_argument("--dev", action="store_true", default=False, help="Enable developer mode")
 
     args = parser.parse_args()
 
@@ -220,5 +224,6 @@ if __name__ == "__main__":
             args.ws_name,
             args.status_interval,
             args.heartbeat,
+            dev=args.dev,
         )
     )

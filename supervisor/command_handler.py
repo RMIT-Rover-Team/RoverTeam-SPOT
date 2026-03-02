@@ -100,32 +100,6 @@ Notes:
 """
         self._reply(help_msg.strip(), level="INFO")
 
-    async def _restart(self, args: List[str]):
-        if len(args) < 4:
-            self._reply("No process specified", level="ERROR")
-            return
-
-        name = args[3]
-        sub = self._get_subsystem(name)
-
-        if not sub:
-            self._reply(f"Process '{name}' not found", level="ERROR")
-            return
-
-        try:
-            await self.pm.stop(sub)
-        except Exception as e:
-            self._reply(f"Failed to stop {name}: {e}", level="ERROR")
-            return
-
-        try:
-            await self.pm.start(sub)
-        except Exception as e:
-            self._reply(f"Failed to start {name}: {e}", level="ERROR")
-            return
-
-        self._reply(f"Restarted {name}", level="WARNING")
-
     async def _stop(self, args: List[str]):
         if len(args) < 4:
             self._reply("No process specified", level="ERROR")
@@ -155,13 +129,44 @@ Notes:
         except Exception as e:
             self._reply(f"Failed to stop {name}: {e}", level="ERROR")
 
+    # inside CommandHandler
+    async def _restart(self, args: List[str]):
+        if len(args) < 4:
+            self._reply("No process specified", level="ERROR")
+            return
+
+        name = args[3]
+        extra_args = args[4:]  # everything after the process name
+        sub = self._get_subsystem(name)
+
+        if not sub:
+            self._reply(f"Process '{name}' not found", level="ERROR")
+            return
+
+        try:
+            await self.pm.stop(sub)
+        except Exception as e:
+            self._reply(f"Failed to stop {name}: {e}", level="ERROR")
+            return
+
+        try:
+            await self.pm.start(sub, extra_args=extra_args)
+        except Exception as e:
+            self._reply(f"Failed to start {name}: {e}", level="ERROR")
+            return
+
+        self._reply(f"Restarted {name} with args: {' '.join(extra_args)}", level="WARNING")
+
+
     async def _start(self, args: List[str]):
         if len(args) < 4:
             self._reply("No process specified", level="ERROR")
             return
 
         name = args[3]
+        extra_args = args[4:]  # everything after the process name
         sub = self._get_subsystem(name)
+
         if not sub:
             self._reply(f"Process '{name}' not found", level="ERROR")
             return
@@ -174,8 +179,8 @@ Notes:
             return
 
         try:
-            await self.pm.start(sub)
-            self._reply(f"Started {name}", level="WARNING")
+            await self.pm.start(sub, extra_args=extra_args)
+            self._reply(f"Started {name} with args: {' '.join(extra_args)}", level="WARNING")
         except Exception as e:
             self._reply(f"Failed to start {name}: {e}", level="ERROR")
 
