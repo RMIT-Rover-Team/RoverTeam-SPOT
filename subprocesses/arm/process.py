@@ -96,7 +96,7 @@ async def control_loop(control_socket: ControlSocket, interval: float):
 # -------------------------
 async def heartbeat_loop(control_socket: ControlSocket, interval: float):
     while not shutdown_event.is_set():
-        await control_socket.outputs.update_output("heartbeat", True)
+        print("HEARTBEAT")
         await asyncio.sleep(interval)
 
 
