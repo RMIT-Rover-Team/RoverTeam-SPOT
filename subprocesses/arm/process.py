@@ -14,7 +14,7 @@ from sharedlib.actuator.myactuator import MyActuator
 from sharedlib.actuator.dummyactuator import DummyActuator
 from sharedlib.actuator.payloadActuator import PayloadActuator
 
-from kinematics.differential_velocity import DifferentialVelocityController
+from kinematics.util import shortest_angle_delta
 
 # -------------------------
 # LOGGING
@@ -53,7 +53,20 @@ def make_input_callback(joint_name: str, commanded_inputs: dict):
 # CONTROL LOOP
 # -------------------------
 async def control_loop(actuators, commanded_inputs, control_modes, control_socket: ControlSocket, interval: float):
+    last_time = asyncio.get_event_loop().time()
+
     while not shutdown_event.is_set():
+        now = asyncio.get_event_loop().time()
+        dt = now - last_time
+        last_time = now
+
+        if commanded_inputs.get("moveto_ready", 0) > 0.5:
+            control_modes["J2"] = 1
+            control_modes["J3"] = 1
+        else:
+            control_modes["J2"] = 0
+            control_modes["J3"] = 0
+    
         for joint, actuator in actuators:
             target_input = commanded_inputs[joint]  # deg/s or desired pos depending on mode
             mode = control_modes.get(joint, 0)      # default to regular velocity mode
@@ -64,9 +77,15 @@ async def control_loop(actuators, commanded_inputs, control_modes, control_socke
                 # Regular velocity control
                 velocity_cmd = target_input
             elif mode == 1:
-                velocity_cmd = 0 - actuator.get_position()
+                if joint == "J2":
+                    target_pos = 70#deg
+                if joint == "J3":
+                    target_pos = 50#deg
 
-            logger.log(logging.INFO, f"Control loop for {joint}: target_input={target_input}, mode={mode}, velocity_cmd={velocity_cmd}")
+                current_pos = actuator.get_position()
+                velocity_cmd = math.clamp(shortest_angle_delta(current_pos, target_pos), -10, 10)
+
+            #logger.log(logging.INFO, f"Control loop for {joint}: target_input={target_input}, mode={mode}, velocity_cmd={velocity_cmd}")
 
             # ODrive expects turns/sec
             if isinstance(actuator, ODriveActuator):
@@ -147,7 +166,6 @@ async def main(
 
     commanded_inputs = {joint: 0.0 for joint, _ in actuators}
     control_modes = {joint: 0 for joint, _ in actuators}  # default all to mode 0
-    control_modes["J6"] = 1  # J6 is in mode 1 (constant velocity)
 
     # -------------------------
     # LOOP AND SIGNALS
@@ -185,6 +203,16 @@ async def main(
                 make_input_callback(name, commanded_inputs)(v)
             ),
         )
+
+    commanded_inputs["moveto_ready"] = 0.0
+    schema.register_axis(
+        control_socket.inputs,
+        "moveto_ready",
+        callback=lambda v, name="moveto_ready": asyncio.create_task(
+            make_input_callback("moveto_ready", commanded_inputs)(v)
+        ),
+    )
+    
 
     # Register outputs
     for joint, _ in actuators:
