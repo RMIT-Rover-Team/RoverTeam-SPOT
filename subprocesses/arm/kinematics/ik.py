@@ -36,20 +36,3 @@ def solve_ik(joints, links, target):
     # Convert to degrees
     joints[1].set_angle(math.degrees(theta1))
     joints[2].set_angle(math.degrees(theta2))
-
-def solve_ik_vel(joints, links, target, dt):
-    j1_i = joints[0].angle_deg
-    j2_i = joints[1].angle_deg
-    j3_i = joints[2].angle_deg
-
-    solve_ik(joints, links, target)
-
-    j1_diff = joints[0].angle_deg - j1_i
-    j2_diff = joints[1].angle_deg - j2_i
-    j3_diff = joints[2].angle_deg - j3_i
-
-    j1_vel = j1_diff / dt
-    j2_vel = j2_diff / dt
-    j3_vel = j3_diff / dt
-
-    return [j1_vel, j2_vel, j3_vel]

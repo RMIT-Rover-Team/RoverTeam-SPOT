@@ -17,7 +17,7 @@ from sharedlib.actuator.payloadActuator import PayloadActuator
 
 from kinematics.util import shortest_angle_delta, clamp
 from kinematics.arm_loader import load_arm_from_file
-from kinematics.ik import solve_ik_vel
+from kinematics.ik import solve_ik
 
 ARM_MODEL_PATH = Path(__file__).parent / "kinematics" / "arm.json5"  # change to your config path
 
@@ -85,8 +85,8 @@ async def control_loop(actuators, commanded_inputs, control_modes, arm_model, co
         last_time = now
 
         # Update IK positions
-        commanded_inputs["ik_z_pos"] += commanded_inputs["ik_z_vel"] * dt * 1000  # mm/s
-        commanded_inputs["ik_x_pos"] += commanded_inputs["ik_x_vel"] * dt * 1000
+        commanded_inputs["ik_z_pos"] += commanded_inputs["ik_z_vel"] * dt  # mm/s
+        commanded_inputs["ik_x_pos"] += commanded_inputs["ik_x_vel"] * dt
 
         # Determine move-to mode
         move_input = commanded_inputs.get("moveto_ready", 0)
@@ -105,10 +105,11 @@ async def control_loop(actuators, commanded_inputs, control_modes, arm_model, co
 
         # --- IK Target Handling ---
         if move_input_enum == MOVETO_IK:
-            ik_target = [commanded_inputs["ik_x_pos"], 0, commanded_inputs["ik_z_pos"]]
+            ik_target = [commanded_inputs["ik_x_pos"] / 1000, 0, commanded_inputs["ik_z_pos"] / 1000]
             # compute joint velocities for J1, J2, J3
-            joint_vels = solve_ik_vel(arm_model.joints, arm_model.links, ik_target, dt)
-            ik_joint_map = ["J1", "J2", "J3"]
+            joint_positions = solve_ik(arm_model.joints, arm_model.links, ik_target)
+            move_target["J2"] = joint_positions[1]  # theta1
+            move_target["J3"] = joint_positions[2]  # theta2
 
         # Control each actuator
         for idx, (joint, actuator) in enumerate(actuators):
@@ -119,13 +120,9 @@ async def control_loop(actuators, commanded_inputs, control_modes, arm_model, co
             if mode == 0:
                 velocity_cmd = target_input
             elif mode == 1:
-                if move_input_enum == MOVETO_IK and joint in ["J1", "J2", "J3"]:
-                    # Use IK-computed velocity
-                    velocity_cmd = joint_vels[ik_joint_map.index(joint)]
-                elif joint in move_target:
-                    target_pos = move_target[joint]
-                    current_pos = actuator.get_position()
-                    velocity_cmd = clamp(shortest_angle_delta(current_pos, target_pos), -10, 10)
+                target_pos = move_target[joint]
+                current_pos = actuator.get_position()
+                velocity_cmd = clamp(shortest_angle_delta(current_pos, target_pos), -10, 10)
 
             # ODrive expects turns/sec
             if isinstance(actuator, ODriveActuator):
