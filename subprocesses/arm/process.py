@@ -2,6 +2,7 @@ import asyncio
 import argparse
 import json
 import logging
+import math
 import signal
 
 from sharedlib.controlsocket.controlsocket import ControlSocket
@@ -63,7 +64,9 @@ async def control_loop(actuators, commanded_inputs, control_modes, control_socke
                 # Regular velocity control
                 velocity_cmd = target_input
             elif mode == 1:
-                velocity_cmd = 20
+                actuator_pos = actuator.get_position()
+                delta = 67 - actuator_pos
+                velocity_cmd = math.clamp(delta, -100, 100)  # simple P controller with max speed limit
 
             # ODrive expects turns/sec
             if isinstance(actuator, ODriveActuator):
