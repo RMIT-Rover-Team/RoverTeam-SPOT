@@ -94,6 +94,15 @@ class ODriveActuator(Actuator):
         except struct.error as e:
             print(f"[ODriveActuator {self.name}] CAN decode error: {e}")
 
+
+    def build_position_command(self):
+        """ODrive doesn’t use position commands over CAN."""
+        return None
+
+    def build_position_request(self):
+        """ODrive broadcasts position automatically; no request needed."""
+        return None
+    
     # -------------------------
     # Accessors
     # -------------------------
