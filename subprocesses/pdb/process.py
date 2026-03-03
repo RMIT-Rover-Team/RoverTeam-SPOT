@@ -4,12 +4,14 @@ import json
 import logging
 import signal
 
+import uvicorn
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import PlainTextResponse
+from models import BoardID
 
 from sharedlib.canbus.client import CANClient
 from subprocesses.pdb.telemetry.manager import PDBManager
-
-from models import BoardID
 
 
 # logger.log(25, msg) (SUCCESS)
@@ -27,6 +29,13 @@ logger.setLevel(logging.INFO)
 logger.addHandler(JsonHandler())
 
 app = FastAPI()
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Allows all origins (React app, etc.)
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["*"],  # Allows all headers
+)
 
 pdb: PDBManager | None = None
 shutdown_event = asyncio.Event()
@@ -52,6 +61,11 @@ async def pdb_telemetry_loop(pdb: PDBManager, interval: float):
     except Exception as e:
         logger.error(f"Sending PDB Telemetry Data ran into an error: {e}")
         request_shutdown()  # request shutdown to restart
+
+
+@app.get("/ping")
+async def ping():
+    return PlainTextResponse("pdb")
 
 
 @app.post("/switch1/channel/{channel}/{enable}")
@@ -106,6 +120,8 @@ async def main(
     status_interval: float,
     heartbeat_interval: float,
 ):
+    global pdb
+
     loop = asyncio.get_running_loop()
     loop.add_signal_handler(signal.SIGINT, request_shutdown)
     loop.add_signal_handler(signal.SIGTERM, request_shutdown)
@@ -123,6 +139,10 @@ async def main(
     # Websocket
     # -------------------------
     # Required tasks
+    config = uvicorn.Config(app, host=args.ws_host, port=args.ws_port, log_level="info")
+    server = uvicorn.Server(config)
+    server_task = asyncio.create_task(server.serve())
+
     heartbeat_task = asyncio.create_task(heartbeat_loop(heartbeat_interval))
     pdb_task = asyncio.create_task(pdb_telemetry_loop(pdb, interval=1))
 
@@ -130,6 +150,7 @@ async def main(
     await shutdown_event.wait()
 
     # Cleanup
+    await server_task
     pdb_task.cancel()
     heartbeat_task.cancel()
 

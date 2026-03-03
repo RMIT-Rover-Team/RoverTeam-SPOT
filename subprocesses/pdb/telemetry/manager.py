@@ -1,7 +1,7 @@
 import dataclasses
+import logging
 import struct
 from typing import List, Optional, Union
-import logging
 
 from sharedlib.canbus.client import CANClient
 
@@ -45,7 +45,7 @@ class PDBManager:
         if board is None:
             return  # Not correct board
 
-        if source_id == BoardID.BMS_ID:  # BMS
+        if source_id == BoardID.BMS:  # BMS
             if channel_id < len(self.bms):
                 self.bms[channel_id] = value
         else:  # Channel Metrics
@@ -57,10 +57,10 @@ class PDBManager:
         self, board_id: int
     ) -> Optional[Union[List[ChannelMetrics], List[float]]]:
         board_map = {
-            BoardID.SWITCH_ID: self.switch,
-            BoardID.BUCK1_ID: self.buck1,
-            BoardID.BUCK2_ID: self.buck2,
-            BoardID.BMS_ID: self.bms,
+            BoardID.SWITCH: self.switch,
+            BoardID.BUCK1: self.buck1,
+            BoardID.BUCK2: self.buck2,
+            BoardID.BMS: self.bms,
         }
 
         board = board_map.get(board_id)

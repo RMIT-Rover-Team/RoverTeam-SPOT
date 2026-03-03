@@ -8,10 +8,10 @@ class MasterID(IntEnum):
 
 
 class BoardID(IntEnum):
-    SWITCH_ID = 0xA
-    BUCK1_ID = 0x06
-    BUCK2_ID = 0x07
-    BMS_ID = 0x08
+    SWITCH = 0xA
+    BUCK1 = 0x06
+    BUCK2 = 0x07
+    BMS = 0x08
 
 
 class AttributeID(IntEnum):
