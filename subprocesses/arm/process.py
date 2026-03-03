@@ -2,7 +2,6 @@ import asyncio
 import argparse
 import json
 import logging
-import math
 import signal
 from pathlib import Path
 
@@ -15,11 +14,19 @@ from sharedlib.actuator.myactuator import MyActuator
 from sharedlib.actuator.dummyactuator import DummyActuator
 from sharedlib.actuator.payloadActuator import PayloadActuator
 
-from kinematics.util import shortest_angle_delta, clamp
 from kinematics.arm_loader import load_arm_from_file
-from kinematics.ik import solve_ik
 
-ARM_MODEL_PATH = Path(__file__).parent / "kinematics" / "arm.json5"  # change to your config path
+from control_loops import (
+    control_loop,
+    heartbeat_loop,
+    telemetry_loop,
+)
+
+# -------------------------
+# ARM MODEL PATH
+# -------------------------
+ARM_MODEL_PATH = Path(__file__).parent / "kinematics" / "arm.json5"
+
 
 # -------------------------
 # LOGGING
@@ -34,10 +41,12 @@ logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 logger.addHandler(JsonHandler())
 
+
 # -------------------------
 # SHUTDOWN FLAG
 # -------------------------
 shutdown_event = asyncio.Event()
+
 
 def request_shutdown():
     logger.info("Shutdown signal received")
@@ -54,113 +63,6 @@ def make_input_callback(joint_name: str, commanded_inputs: dict):
 
 
 # -------------------------
-# CONTROL LOOP
-# -------------------------
-
-MOVETO_READY = 1
-MOVETO_STOW = 2
-MOVETO_IK = 3
-
-MOVETO_POSITIONS = {
-    MOVETO_READY: {
-        "J2": -135,  # deg
-        "J3": -135,  # deg
-    },
-    MOVETO_STOW: {
-        "J2": 0,   # deg
-        "J3": 0   # deg
-    },
-    MOVETO_IK: {
-        "J2": None,  # placeholder, will be set dynamically
-        "J3": None   # placeholder, will be set dynamically
-    }
-}
-
-async def control_loop(actuators, commanded_inputs, control_modes, arm_model, control_socket: ControlSocket, interval: float):
-    last_time = asyncio.get_event_loop().time()
-
-    while not shutdown_event.is_set():
-        now = asyncio.get_event_loop().time()
-        dt = now - last_time
-        last_time = now
-
-        # Update IK positions
-        commanded_inputs["ik_z_pos"] += commanded_inputs["ik_z_vel"] * dt  # mm/s
-        commanded_inputs["ik_x_pos"] += commanded_inputs["ik_x_vel"] * dt
-
-        # Determine move-to mode
-        move_input = commanded_inputs.get("moveto_ready", 0)
-        move_input_enum = int(move_input) if move_input > 0.5 else 0
-
-        if move_input_enum in MOVETO_POSITIONS:
-            move_target = MOVETO_POSITIONS[move_input_enum]
-
-            # Enable diff-pos for all joints in this move
-            for joint in move_target.keys():
-                control_modes[joint] = 1
-        else:
-            move_target = {}
-            for joint in ["J2", "J3"]:
-                control_modes[joint] = 0
-
-        # --- IK Target Handling ---
-        if move_input_enum == MOVETO_IK:
-            ik_target = [commanded_inputs["ik_x_pos"] / 1000, 0, commanded_inputs["ik_z_pos"] / 1000]
-            # compute joint velocities for J1, J2, J3
-            solve_ik(arm_model.joints, arm_model.links, ik_target)
-            move_target["J2"] = arm_model.joints[1].angle_deg
-            move_target["J3"] = -arm_model.joints[2].angle_deg
-
-        # Control each actuator
-        for idx, (joint, actuator) in enumerate(actuators):
-            velocity_cmd = 0.0
-            target_input = commanded_inputs[joint]
-            mode = control_modes.get(joint, 0)
-
-            if mode == 0:
-                velocity_cmd = target_input
-            elif mode == 1:
-                target_pos = move_target[joint]
-                current_pos = actuator.get_position()
-                velocity_cmd = clamp(shortest_angle_delta(current_pos, target_pos), -10, 10)
-
-            # ODrive expects turns/sec
-            if isinstance(actuator, ODriveActuator):
-                actuator.set_velocity(velocity_cmd / 360.0)
-            else:
-                actuator.set_velocity(velocity_cmd)
-
-            await control_socket.outputs.update_output(f"{joint}_velocity_cmd", velocity_cmd)
-
-        await asyncio.sleep(interval)
-
-
-# -------------------------
-# HEARTBEAT LOOP
-# -------------------------
-async def heartbeat_loop(control_socket: ControlSocket, interval: float):
-    while not shutdown_event.is_set():
-        print("HEARTBEAT") # THIS IS REQUIRED FOR PROCESS WATCHDOG - DO NOT REMOVE
-        await asyncio.sleep(interval)
-
-
-# -------------------------
-# TELEMETRY LOOP (POSITION + VELOCITY)
-# -------------------------
-async def telemetry_loop(actuators, control_socket: ControlSocket, interval: float):
-    while not shutdown_event.is_set():
-        for joint, actuator in actuators:
-            try:
-                pos = actuator.get_position()  # implement in each actuator
-                vel = actuator.get_velocity()  # implement in each actuator
-                await control_socket.outputs.update_output(f"{joint}_position", pos)
-                await control_socket.outputs.update_output(f"{joint}_velocity", vel)
-            except Exception as e:
-                logger.warning(f"Telemetry read failed for {joint}: {e}")
-        await asyncio.sleep(interval)
-
-
-# -------------------------
 # MAIN
 # -------------------------
 async def main(
@@ -172,6 +74,7 @@ async def main(
     telemetry_interval: float = 0.1,
     dev: bool = False,
 ):
+
     # -------------------------
     # ACTUATORS
     # -------------------------
@@ -199,10 +102,19 @@ async def main(
         ]
 
     commanded_inputs = {joint: 0.0 for joint, _ in actuators}
-    control_modes = {joint: 0 for joint, _ in actuators}  # default all to mode 0
+    control_modes = {joint: 0 for joint, _ in actuators}
+
+    # Extra control inputs
+    commanded_inputs["moveto_ready"] = 0.0
+
+    commanded_inputs["ik_z_pos"] = 50.0  # mm
+    commanded_inputs["ik_z_vel"] = 0.0
+
+    commanded_inputs["ik_x_pos"] = 980.0  # mm
+    commanded_inputs["ik_x_vel"] = 0.0
 
     # -------------------------
-    # LOOP AND SIGNALS
+    # SIGNAL HANDLERS
     # -------------------------
     loop = asyncio.get_running_loop()
     loop.add_signal_handler(signal.SIGINT, request_shutdown)
@@ -219,7 +131,7 @@ async def main(
         manager.register(actuator)
 
     # -------------------------
-    # WEBSOCKET SETUP
+    # WEBSOCKET
     # -------------------------
     control_socket = ControlSocket(
         ws_host,
@@ -228,7 +140,7 @@ async def main(
         allow_multiple_clients=False,
     )
 
-    # Register velocity inputs
+    # Register joint velocity inputs
     for joint, _ in actuators:
         schema.register_axis(
             control_socket.inputs,
@@ -238,55 +150,78 @@ async def main(
             ),
         )
 
-    commanded_inputs["moveto_ready"] = 0.0
+    # Move-to input
     schema.register_axis(
         control_socket.inputs,
         "moveto_ready",
-        callback=lambda v, name="moveto_ready": asyncio.create_task(
+        callback=lambda v: asyncio.create_task(
             make_input_callback("moveto_ready", commanded_inputs)(v)
         ),
     )
 
-    commanded_inputs["ik_z_pos"] = 50#mm
-    commanded_inputs["ik_z_vel"] = 0.0
+    # IK velocity inputs
     schema.register_axis(
         control_socket.inputs,
         "ik_z_vel",
-        callback=lambda v, name="ik_z_vel": asyncio.create_task(
+        callback=lambda v: asyncio.create_task(
             make_input_callback("ik_z_vel", commanded_inputs)(v)
         ),
     )
 
-    commanded_inputs["ik_x_pos"] = 980#mm
-    commanded_inputs["ik_x_vel"] = 0.0
     schema.register_axis(
         control_socket.inputs,
         "ik_x_vel",
-        callback=lambda v, name="ik_x_vel": asyncio.create_task(
+        callback=lambda v: asyncio.create_task(
             make_input_callback("ik_x_vel", commanded_inputs)(v)
         ),
     )
 
+    # -------------------------
+    # ARM MODEL
+    # -------------------------
     arm_model = load_arm_from_file(ARM_MODEL_PATH)
-    
 
-    # Register outputs
+    # -------------------------
+    # REGISTER OUTPUTS
+    # -------------------------
     for joint, _ in actuators:
         control_socket.outputs.register_output(f"{joint}_velocity_cmd")
         control_socket.outputs.register_output(f"{joint}_position")
         control_socket.outputs.register_output(f"{joint}_velocity")
 
     await control_socket.start()
-    logger.info(f"Velocity control running on ws://{ws_host}:{ws_port}")
+    logger.info(f"Control running on ws://{ws_host}:{ws_port}")
 
     # -------------------------
-    # CREATE TASKS ARRAY
+    # TASKS
     # -------------------------
     tasks = [
         asyncio.create_task(manager.loop(), name="manager_loop"),
-        asyncio.create_task(control_loop(actuators, commanded_inputs, control_modes, arm_model, control_socket, status_interval), name="control_loop"),
-        asyncio.create_task(heartbeat_loop(control_socket, heartbeat_interval), name="heartbeat_loop"),
-        asyncio.create_task(telemetry_loop(actuators, control_socket, telemetry_interval), name="telemetry_loop"),
+        asyncio.create_task(
+            control_loop(
+                actuators,
+                commanded_inputs,
+                control_modes,
+                arm_model,
+                control_socket,
+                shutdown_event,
+                status_interval,
+            ),
+            name="control_loop",
+        ),
+        asyncio.create_task(
+            heartbeat_loop(shutdown_event, heartbeat_interval),
+            name="heartbeat_loop",
+        ),
+        asyncio.create_task(
+            telemetry_loop(
+                actuators,
+                control_socket,
+                shutdown_event,
+                telemetry_interval,
+            ),
+            name="telemetry_loop",
+        ),
     ]
 
     # Arm ODrive actuators
@@ -301,15 +236,13 @@ async def main(
 
     logger.info("Shutting down tasks...")
 
-    # Cancel all tasks
     for t in tasks:
         t.cancel()
 
-    # Await cancellation
     await asyncio.gather(*tasks, return_exceptions=True)
 
     # -------------------------
-    # SAFE STOP ACTUATORS
+    # SAFE STOP
     # -------------------------
     logger.info("Stopping actuators")
     for _, actuator in actuators:
@@ -317,9 +250,6 @@ async def main(
         if isinstance(actuator, ODriveActuator):
             actuator.request_disarm()
 
-    # -------------------------
-    # CLEANUP
-    # -------------------------
     await control_socket.stop()
     await can_client.close()
 
@@ -336,8 +266,8 @@ if __name__ == "__main__":
     parser.add_argument("--ws_name", type=str, default="velocity_control")
     parser.add_argument("--status_interval", type=float, default=0.02)
     parser.add_argument("--heartbeat", type=float, default=5.0)
-    parser.add_argument("--telemetry_interval", type=float, default=0.1, help="Telemetry interval in seconds")
-    parser.add_argument("--dev", action="store_true", default=False, help="Enable developer mode")
+    parser.add_argument("--telemetry_interval", type=float, default=0.1)
+    parser.add_argument("--dev", action="store_true", default=False)
 
     args = parser.parse_args()
 
