@@ -69,7 +69,7 @@ async def control_loop(actuators, commanded_inputs, control_socket: ControlSocke
 # -------------------------
 async def heartbeat_loop(control_socket: ControlSocket, interval: float):
     while not shutdown_event.is_set():
-        await control_socket.outputs.update_output("heartbeat", True)
+        print("HEARTBEAT") # THIS IS REQUIRED FOR PROCESS WATCHDOG - DO NOT REMOVE
         await asyncio.sleep(interval)
 
 
@@ -171,7 +171,6 @@ async def main(
         control_socket.outputs.register_output(f"{joint}_velocity_cmd")
         control_socket.outputs.register_output(f"{joint}_position")
         control_socket.outputs.register_output(f"{joint}_velocity")
-    control_socket.outputs.register_output("heartbeat")
 
     await control_socket.start()
     logger.info(f"Velocity control running on ws://{ws_host}:{ws_port}")
