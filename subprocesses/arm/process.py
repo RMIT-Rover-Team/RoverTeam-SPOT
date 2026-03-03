@@ -51,20 +51,34 @@ def make_input_callback(joint_name: str, commanded_inputs: dict):
 # -------------------------
 # CONTROL LOOP
 # -------------------------
-async def control_loop(actuators, commanded_inputs, control_socket: ControlSocket, interval: float):
+async def control_loop(actuators, commanded_inputs, control_modes, control_socket: ControlSocket, interval: float):
     while not shutdown_event.is_set():
         for joint, actuator in actuators:
-            target_deg_per_sec = commanded_inputs[joint]
+            target_input = commanded_inputs[joint]  # deg/s or desired pos depending on mode
+            mode = control_modes.get(joint, 0)      # default to regular velocity mode
+
+            velocity_cmd = 0.0
+
+            if mode == 0:
+                # Regular velocity control
+                velocity_cmd = target_input
+            elif mode == 1:
+                # Differential velocity control (position → velocity)
+                measured_pos = actuator.get_position()
+                delta = target_input - measured_pos  # position difference
+                # Apply simple max-speed clamping (+/-)
+                max_vel = 50.0  # deg/s max
+                velocity_cmd = max_vel if delta > 0 else (-max_vel if delta < 0 else 0.0)
 
             # ODrive expects turns/sec
             if isinstance(actuator, ODriveActuator):
-                actuator.set_velocity(target_deg_per_sec / 360.0)
+                actuator.set_velocity(velocity_cmd / 360.0)
             else:
-                actuator.set_velocity(target_deg_per_sec)
+                actuator.set_velocity(velocity_cmd)
 
             await control_socket.outputs.update_output(
                 f"{joint}_velocity_cmd",
-                target_deg_per_sec,
+                velocity_cmd,
             )
 
         await asyncio.sleep(interval)
@@ -134,6 +148,7 @@ async def main(
         ]
 
     commanded_inputs = {joint: 0.0 for joint, _ in actuators}
+    control_modes = {joint: 1 for joint, _ in actuators}  # default all to mode 0
 
     controllers = {
         joint: DifferentialVelocityController(max_speed_deg_s=10.0)
@@ -191,7 +206,7 @@ async def main(
     # -------------------------
     tasks = [
         asyncio.create_task(manager.loop(), name="manager_loop"),
-        asyncio.create_task(control_loop(actuators, commanded_inputs, control_socket, status_interval), name="control_loop"),
+        asyncio.create_task(control_loop(actuators, commanded_inputs, control_modes, control_socket, status_interval), name="control_loop"),
         asyncio.create_task(heartbeat_loop(control_socket, heartbeat_interval), name="heartbeat_loop"),
         asyncio.create_task(telemetry_loop(actuators, control_socket, telemetry_interval), name="telemetry_loop"),
     ]
