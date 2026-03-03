@@ -39,6 +39,6 @@
         // All link lengths are in Metres
         {name: "L1", length: 0.05, vector: [0, 0, 1]},  // vertical
         {name: "L2", length: 0.510, vector: [1, 0, 0]},   // default X-forward
-        {name: "L3", length: 0.477, vector: [1, 0, 0]}   // default X-forward
+        {name: "L3", length: 0.475, vector: [1, 0, 0]}   // default X-forward
     ]
 }

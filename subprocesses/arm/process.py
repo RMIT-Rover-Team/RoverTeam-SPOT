@@ -15,6 +15,10 @@ from sharedlib.actuator.dummyactuator import DummyActuator
 from sharedlib.actuator.payloadActuator import PayloadActuator
 
 from kinematics.util import shortest_angle_delta, clamp
+from kinematics.arm_loader import load_arm_from_file
+from kinematics.ik import solve_ik_vel
+
+ARM_MODEL_PATH = "kinematics/arm.json5"  # change to your config path
 
 # -------------------------
 # LOGGING
@@ -33,7 +37,6 @@ logger.addHandler(JsonHandler())
 # SHUTDOWN FLAG
 # -------------------------
 shutdown_event = asyncio.Event()
-
 
 def request_shutdown():
     logger.info("Shutdown signal received")
@@ -55,6 +58,7 @@ def make_input_callback(joint_name: str, commanded_inputs: dict):
 
 MOVETO_READY = 1
 MOVETO_STOW = 2
+MOVETO_IK = 3
 
 MOVETO_POSITIONS = {
     MOVETO_READY: {
@@ -64,10 +68,14 @@ MOVETO_POSITIONS = {
     MOVETO_STOW: {
         "J2": 0,   # deg
         "J3": 0   # deg
+    },
+    MOVETO_IK: {
+        "J2": None,  # placeholder, will be set dynamically
+        "J3": None   # placeholder, will be set dynamically
     }
 }
-    
-async def control_loop(actuators, commanded_inputs, control_modes, control_socket: ControlSocket, interval: float):
+
+async def control_loop(actuators, commanded_inputs, control_modes, arm_model, control_socket: ControlSocket, interval: float):
     last_time = asyncio.get_event_loop().time()
 
     while not shutdown_event.is_set():
@@ -75,37 +83,48 @@ async def control_loop(actuators, commanded_inputs, control_modes, control_socke
         dt = now - last_time
         last_time = now
 
+        # Update IK positions
+        commanded_inputs["ik_z_pos"] += commanded_inputs["ik_z_vel"] * dt * 1000  # mm/s
+        commanded_inputs["ik_x_pos"] += commanded_inputs["ik_x_vel"] * dt * 1000
+
         # Determine move-to mode
         move_input = commanded_inputs.get("moveto_ready", 0)
+        move_input_enum = int(move_input) if move_input > 0.5 else 0
 
-        if move_input > 0.5:
-            # If the input corresponds to a known move-to enum
-            move_target = MOVETO_POSITIONS.get(int(move_input), {})
-            
-            # Enable differential position mode for all joints in this move
+        if move_input_enum in MOVETO_POSITIONS:
+            move_target = MOVETO_POSITIONS[move_input_enum]
+
+            # Enable diff-pos for all joints in this move
             for joint in move_target.keys():
                 control_modes[joint] = 1
         else:
-            # No move-to command, revert joints to normal velocity
             move_target = {}
-            for joint in ["J2", "J3"]:  # or any joints you want to reset
+            for joint in ["J2", "J3"]:
                 control_modes[joint] = 0
 
-        # Control each actuator
-        for joint, actuator in actuators:
-            target_input = commanded_inputs[joint]  # deg/s or desired pos depending on mode
-            mode = control_modes.get(joint, 0)      # default to regular velocity mode
+        # --- IK Target Handling ---
+        if move_input_enum == MOVETO_IK:
+            ik_target = [commanded_inputs["ik_x_pos"], 0, commanded_inputs["ik_z_pos"]]
+            # compute joint velocities for J1, J2, J3
+            joint_vels = solve_ik_vel(arm_model.joints, arm_model.links, ik_target, dt)
+            ik_joint_map = ["J1", "J2", "J3"]
 
+        # Control each actuator
+        for idx, (joint, actuator) in enumerate(actuators):
             velocity_cmd = 0.0
+            target_input = commanded_inputs[joint]
+            mode = control_modes.get(joint, 0)
 
             if mode == 0:
-                # Regular velocity control
                 velocity_cmd = target_input
-            elif mode == 1 and joint in move_target:
-                target_pos = move_target[joint]
-                current_pos = actuator.get_position()
-                # Clamp velocity to [-10, 10] deg/s
-                velocity_cmd = max(min(shortest_angle_delta(current_pos, target_pos), 10), -10)
+            elif mode == 1:
+                if move_input_enum == MOVETO_IK and joint in ["J1", "J2", "J3"]:
+                    # Use IK-computed velocity
+                    velocity_cmd = joint_vels[ik_joint_map.index(joint)]
+                elif joint in move_target:
+                    target_pos = move_target[joint]
+                    current_pos = actuator.get_position()
+                    velocity_cmd = clamp(shortest_angle_delta(current_pos, target_pos), -10, 10)
 
             # ODrive expects turns/sec
             if isinstance(actuator, ODriveActuator):
@@ -113,10 +132,7 @@ async def control_loop(actuators, commanded_inputs, control_modes, control_socke
             else:
                 actuator.set_velocity(velocity_cmd)
 
-            await control_socket.outputs.update_output(
-                f"{joint}_velocity_cmd",
-                velocity_cmd,
-            )
+            await control_socket.outputs.update_output(f"{joint}_velocity_cmd", velocity_cmd)
 
         await asyncio.sleep(interval)
 
@@ -232,6 +248,28 @@ async def main(
             make_input_callback("moveto_ready", commanded_inputs)(v)
         ),
     )
+
+    commanded_inputs["ik_z_pos"] = 50#mm
+    commanded_inputs["ik_z_vel"] = 0.0
+    schema.register_axis(
+        control_socket.inputs,
+        "ik_z_vel",
+        callback=lambda v, name="ik_z_vel": asyncio.create_task(
+            make_input_callback("ik_z_vel", commanded_inputs)(v)
+        ),
+    )
+
+    commanded_inputs["ik_x_pos"] = 980#mm
+    commanded_inputs["ik_x_vel"] = 0.0
+    schema.register_axis(
+        control_socket.inputs,
+        "ik_x_vel",
+        callback=lambda v, name="ik_x_vel": asyncio.create_task(
+            make_input_callback("ik_x_vel", commanded_inputs)(v)
+        ),
+    )
+
+    arm_model = load_arm_from_file(ARM_MODEL_PATH)
     
 
     # Register outputs
@@ -248,7 +286,7 @@ async def main(
     # -------------------------
     tasks = [
         asyncio.create_task(manager.loop(), name="manager_loop"),
-        asyncio.create_task(control_loop(actuators, commanded_inputs, control_modes, control_socket, status_interval), name="control_loop"),
+        asyncio.create_task(control_loop(actuators, commanded_inputs, control_modes, arm_model, control_socket, status_interval), name="control_loop"),
         asyncio.create_task(heartbeat_loop(control_socket, heartbeat_interval), name="heartbeat_loop"),
         asyncio.create_task(telemetry_loop(actuators, control_socket, telemetry_interval), name="telemetry_loop"),
     ]
