@@ -3,14 +3,14 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from subprocesses.pdb.telemetry.manager import PDBTelemetryManager
+from subprocesses.pdb.telemetry.manager import PDBManager
 
 
 @pytest.fixture
 def manager():
     # Mock the can_client so we don't need a real bus for logic tests
     mock_can = MagicMock()
-    return PDBTelemetryManager(mock_can)
+    return PDBManager(mock_can)
 
 
 def test_id_conversion(manager):

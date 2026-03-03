@@ -46,7 +46,7 @@ async def pdb_telemetry_loop(pdb: PDBManager, interval: float):
         while not shutdown_event.is_set():
             # Get the data
             data = pdb.get_snapshot()
-            msg = json.dumps({"type": "pdb_telemetry", "data": data})
+            msg = json.dumps({"type": "pdb_data", "data": data})
             print(f"JSON {msg}")  # send data over to pdb
             await asyncio.sleep(interval)
     except Exception as e:
@@ -116,7 +116,7 @@ async def main(
     can_client = CANClient()
     await can_client.start()
 
-    pdb = PDBManager(can_client)
+    pdb = PDBManager(can_client, logger)
     pdb.register_all()
 
     # -------------------------

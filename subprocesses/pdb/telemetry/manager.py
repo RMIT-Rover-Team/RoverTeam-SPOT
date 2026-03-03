@@ -1,6 +1,7 @@
 import dataclasses
 import struct
 from typing import List, Optional, Union
+import logging
 
 from sharedlib.canbus.client import CANClient
 
@@ -8,9 +9,9 @@ from ..models import AttributeID, BoardID, ChannelMetrics, CommandID
 
 
 class PDBManager:
-    def __init__(self, can_client: CANClient):
+    def __init__(self, can_client: CANClient, logger: logging.Logger = None):
         self.can = can_client
-
+        self.logger = logger
         self.switch: List[ChannelMetrics] = [ChannelMetrics() for _ in range(8)]
         self.buck1: List[ChannelMetrics] = [ChannelMetrics() for _ in range(2)]
         self.buck2: List[ChannelMetrics] = [ChannelMetrics() for _ in range(2)]
@@ -23,10 +24,9 @@ class PDBManager:
         )
 
     def register_all(self):
-
         for b_id in BoardID:
             self.register(
-                ((0xFF & 0x3F) << 6) | b_id
+                ((0xFF & 0x1F) << 6) | b_id
             )  # source board id, destination all can
 
     def handle_can_message(self, msg_id: int, data: bytes):
