@@ -58,15 +58,15 @@ MOVETO_STOW = 2
 
 MOVETO_POSITIONS = {
     MOVETO_READY: {
-        "J2": 70,  # deg
-        "J3": 50,  # deg
+        "J2": -135,  # deg
+        "J3": -135,  # deg
     },
     MOVETO_STOW: {
         "J2": 0,   # deg
-        "J3": 0,   # deg
+        "J3": 0   # deg
     }
 }
-
+    
 async def control_loop(actuators, commanded_inputs, control_modes, control_socket: ControlSocket, interval: float):
     last_time = asyncio.get_event_loop().time()
 
