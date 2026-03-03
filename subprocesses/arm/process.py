@@ -63,12 +63,7 @@ async def control_loop(actuators, commanded_inputs, control_modes, control_socke
                 # Regular velocity control
                 velocity_cmd = target_input
             elif mode == 1:
-                # Differential velocity control (position → velocity)
-                measured_pos = actuator.get_position()
-                delta = target_input - measured_pos  # position difference
-                # Apply simple max-speed clamping (+/-)
-                max_vel = 50.0  # deg/s max
-                velocity_cmd = max_vel if delta > 0 else (-max_vel if delta < 0 else 0.0)
+                velocity_cmd = 20
 
             # ODrive expects turns/sec
             if isinstance(actuator, ODriveActuator):
@@ -148,12 +143,8 @@ async def main(
         ]
 
     commanded_inputs = {joint: 0.0 for joint, _ in actuators}
-    control_modes = {joint: 1 for joint, _ in actuators}  # default all to mode 0
-
-    controllers = {
-        joint: DifferentialVelocityController(max_speed_deg_s=10.0)
-        for joint, _ in actuators
-    }
+    control_modes = {joint: 0 for joint, _ in actuators}  # default all to mode 0
+    control_modes["J6"] = 1  # J6 is in mode 1 (constant velocity)
 
     # -------------------------
     # LOOP AND SIGNALS
