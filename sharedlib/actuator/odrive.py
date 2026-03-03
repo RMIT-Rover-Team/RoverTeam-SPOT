@@ -13,6 +13,7 @@ class ODriveActuator(Actuator):
     CMD_SET_AXIS_STATE = 0x07
     CMD_SET_INPUT_VEL = 0x0D
     CMD_GET_ENCODER_ESTIMATES = 0x09  # broadcasted automatically by ODrive
+    CMD_RX_SDO = 0x04
 
     # Axis states
     AXIS_STATE_IDLE = 1
@@ -55,8 +56,16 @@ class ODriveActuator(Actuator):
             return None
 
         self._lastAxisState = target_state
-        payload = struct.pack("<I", target_state)
-        return self._msg_id(self.CMD_SET_AXIS_STATE), payload
+
+        opcode = 0x01  # SDO write
+        endpoint_id = 368  # Axis state parameter
+        reserved = 0
+        value = 0x02 # Velocity Mode
+
+        return [
+            (self._msg_id(self.CMD_RX_SDO), struct.pack("<BHBI", opcode, endpoint_id, reserved, value)),
+            (self._msg_id(self.CMD_SET_AXIS_STATE), struct.pack("<I", target_state))
+        ]
 
     # -------------------------
     # Direct velocity commands

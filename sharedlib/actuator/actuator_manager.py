@@ -1,7 +1,20 @@
 import asyncio
-from typing import Dict
+from typing import Dict, Iterable, Tuple, Optional, Union
+
 from sharedlib.canbus.client import CANClient
 from .actuator_base import Actuator
+
+
+# -------------------------------------------------
+# Type aliases
+# -------------------------------------------------
+CANCommand = Tuple[int, bytes]
+MaybeCommands = Optional[
+    Union[
+        CANCommand,
+        Iterable[CANCommand],
+    ]
+]
 
 
 class ActuatorManager:
@@ -34,6 +47,23 @@ class ActuatorManager:
             )
 
     # -------------------------------------------------
+    # Internal: Send single or multiple commands
+    # -------------------------------------------------
+    async def _send_commands(self, cmds: MaybeCommands):
+        if not cmds:
+            return
+
+        # Single command: (can_id, data)
+        if isinstance(cmds, tuple):
+            await self.can.send(*cmds)
+            return
+
+        # Iterable of commands
+        for cmd in cmds:
+            if cmd:
+                await self.can.send(*cmd)
+
+    # -------------------------------------------------
     # Main loop
     # -------------------------------------------------
     async def loop(self):
@@ -47,21 +77,17 @@ class ActuatorManager:
                 # -----------------------------------------
                 if hasattr(actuator, "build_axis_state_command"):
                     cmd = actuator.build_axis_state_command()
-                    if cmd:
-                        await self.can.send(*cmd)
+                    await self._send_commands(cmd)
 
                 # -----------------------------------------
                 # Velocity / Position
                 # -----------------------------------------
-                cmd = None
-
                 if actuator.target_mode == 0:
                     cmd = actuator.build_velocity_command()
                 else:
                     cmd = actuator.build_position_command()
 
-                if cmd:
-                    await self.can.send(*cmd)
+                await self._send_commands(cmd)
 
             # ---------------------------------------------
             # Position request (MyActuator only)
@@ -71,7 +97,7 @@ class ActuatorManager:
                 if hasattr(actuator, "build_position_request"):
                     cmd = actuator.build_position_request()
                     if cmd:
-                        await self.can.send(*cmd)
+                        await self._send_commands(cmd)
                         break
 
             await asyncio.sleep(interval)
