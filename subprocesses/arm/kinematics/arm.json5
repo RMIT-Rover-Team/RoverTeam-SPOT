@@ -26,7 +26,7 @@
         {
             name: "J3",
             hardware: "myactuator",
-            limits: [-90, 90],
+            limits: [-135, 135],
             axis: [0,1,0],
             home: 0,
             stow: 90,
