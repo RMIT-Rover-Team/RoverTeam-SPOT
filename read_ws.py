@@ -5,7 +5,7 @@ import json
 
 async def listen():
     # Make sure port matches your main script (default 8765)
-    uri = "ws://0.0.0.0:5000/ws"
+    uri = "ws://0.0.0.0:5005/ws"
 
     print(f"Connecting to {uri}...")
     try:

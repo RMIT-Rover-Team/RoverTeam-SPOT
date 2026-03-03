@@ -4,12 +4,15 @@ import json
 import logging
 import signal
 
-from subprocesses.pdb.telemetry.manager import PDBTelemetryManager
+from fastapi import FastAPI, HTTPException
 
 from sharedlib.canbus.client import CANClient
-from sharedlib.controlsocket.controlsocket import ControlSocket
+from subprocesses.pdb.telemetry.manager import PDBManager
+
+from models import BoardID
 
 
+# logger.log(25, msg) (SUCCESS)
 # -------------------------
 # CONFIG
 # -------------------------
@@ -23,38 +26,66 @@ logger = logging.getLogger("pdb")
 logger.setLevel(logging.INFO)
 logger.addHandler(JsonHandler())
 
-pdb_manager: PDBTelemetryManager | None = None
+app = FastAPI()
+
+pdb: PDBManager | None = None
 shutdown_event = asyncio.Event()
 
-pdb_telemetry_ids = {
-    "SWITCH": 0xA,
-    "BUCK1": 0x06,
-    "BUCK2": 0x07,
-    "BMS": 0x08,
-}
 
-
-async def heartbeat_loop(control_socket: ControlSocket, interval: float):
+async def heartbeat_loop(interval: float):
     while not shutdown_event.is_set():
         print("HEARTBEAT")
         await asyncio.sleep(interval)
 
 
 # -------------------------
-# Extra Tasks
+# PDB Loops
 # -------------------------
-async def pdb_telemetry_loop(
-    pdb_manager: PDBTelemetryManager, control_socket: ControlSocket, interval: float
-):
-    while not shutdown_event.is_set():
-        # Get the data
-        data = pdb_manager.get_snapshot()
+async def pdb_telemetry_loop(pdb: PDBManager, interval: float):
+    try:
+        while not shutdown_event.is_set():
+            # Get the data
+            data = pdb.get_snapshot()
+            msg = json.dumps({"type": "pdb_telemetry", "data": data})
+            print(f"JSON {msg}")  # send data over to pdb
+            await asyncio.sleep(interval)
+    except Exception as e:
+        logger.error(f"Sending PDB Telemetry Data ran into an error: {e}")
+        request_shutdown()  # request shutdown to restart
 
-        # Send to Frontend via ControlSocket
-        # This assumes you registered "pdb_data" in the main function
-        await control_socket.outputs.update_output("pdb_data", data)
 
-        await asyncio.sleep(interval)
+@app.post("/switch1/channel/{channel}/{enable}")
+async def toggle_switch(channel: int, enable: int):
+    # Validation
+    if not (0 <= channel <= 7):
+        raise HTTPException(status_code=400, detail="Channel does not exist")
+    if enable not in [0, 1]:
+        raise HTTPException(status_code=400, detail="Enable must be 0 or 1")
+
+    await pdb.toggle_channel(BoardID.SWITCH, channel, bool(enable))
+
+    state = "enabled" if enable else "disabled"
+    return {"message": f"Switch channel {state}"}
+
+
+@app.post("/buck1/channel/{channel}/{enable}")
+async def toggle_buck1(channel: int, enable: int):
+    if not (0 <= channel <= 4):
+        raise HTTPException(status_code=400, detail="Channel does not exist")
+    if enable not in [0, 1]:
+        raise HTTPException(status_code=400, detail="Enable must be 0 or 1")
+
+    await pdb.toggle_channel(BoardID.BUCK1, channel, bool(enable))
+    return {"message": f"Buck 1 channel {'enabled' if enable else 'disabled'}"}
+
+
+@app.post("/buck2/channel/{channel}/{enable}")
+async def toggle_buck2(channel: int, enable: int):
+    if not (0 <= channel <= 4):
+        raise HTTPException(status_code=400, detail="Channel does not exist")
+
+    await pdb.toggle_channel(BoardID.BUCK2, channel, bool(enable))
+    return {"message": "Buck 2 updated"}
 
 
 # -------------------------
@@ -85,28 +116,15 @@ async def main(
     can_client = CANClient()
     await can_client.start()
 
-    # BUCK 1: 6
-    # BUCK 2: 7
-    # SWITCH: 10
-    pdb_manager = PDBTelemetryManager(can_client)
-    pdb_manager.register_all()
+    pdb = PDBManager(can_client)
+    pdb.register_all()
 
     # -------------------------
     # Websocket
     # -------------------------
-    control_socket = ControlSocket(ws_host, ws_port, ws_name)
-    control_socket.outputs.register_output("pdb_data")
-    control_socket.outputs.register_output("heartbeat")
-
-    await control_socket.start()
     # Required tasks
-
-    pdb_task = asyncio.create_task(
-        pdb_telemetry_loop(pdb_manager, control_socket, interval=1)
-    )
-    heartbeat_task = asyncio.create_task(
-        heartbeat_loop(control_socket, heartbeat_interval)
-    )
+    heartbeat_task = asyncio.create_task(heartbeat_loop(heartbeat_interval))
+    pdb_task = asyncio.create_task(pdb_telemetry_loop(pdb, interval=1))
 
     # Wait for shutdown...
     await shutdown_event.wait()
@@ -116,8 +134,6 @@ async def main(
     heartbeat_task.cancel()
 
     await asyncio.sleep(0)
-
-    await control_socket.stop()
     await can_client.close()
 
 
@@ -130,7 +146,7 @@ if __name__ == "__main__":
     parser.add_argument("--heartbeat", type=float, default=2.0)
 
     args = parser.parse_args()
-
+    # vcan0 181#7200423700000000
     asyncio.run(
         main(
             args.ws_host,

@@ -15,16 +15,15 @@ def manager():
 
 def test_id_conversion(manager):
     """Tests if the 12-bit ID is split into 6-bit Dest and 6-bit Source."""
-    # 0b000110_001010 -> Dest: 6 (Buck1), Source: 10
-    msg_id = (0x06 << 6) | 0x0A
+    msg_id = (0xFF << 6) | 0x06  # Dest: 0xFF (Everything),  Source: 0x6 (Buck1)
     dest, src = manager.convert_arbitration_id(msg_id)
-    assert dest == 0x06
-    assert src == 0x0A
+    assert dest == 0xFF & 0x3F
+    assert src == 0x06 & 0x3F
 
 
 def test_handle_switch_voltage(manager):
     """Tests updating a ChannelMetrics object (Switch Board)."""
-    msg_id = (0x0A << 6) | 0x01  # setup ID for SWITCH_ID (0x0A)
+    msg_id = (0xFF << 6) | 0x0A  # setup ID for SWITCH_ID (0x0A)
     byte0 = 0x71  # Command 7, Attribute 1 (Voltage) -> 0x71
     byte1 = 0x50  # Channel 5, empty 4 bits
     val = 12.5  # float val
@@ -44,7 +43,7 @@ def test_handle_switch_voltage(manager):
 
 def test_handle_bms_list(manager):
     """Tests updating the BMS list (which is List[float], not List[ChannelMetrics])."""
-    msg_id = (0x08 << 6) | 0x01  # BMS_ID is 0x08
+    msg_id = (0xFF << 6) | 0x08  # BMS_ID is 0x08
     byte0 = 0x7B  # Commmand 7, Attribute 0
     byte1 = 0xB0  # Channel 11
     val = 3.99  # float val
