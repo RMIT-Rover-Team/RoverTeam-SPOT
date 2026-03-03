@@ -18,10 +18,6 @@ MOVETO_POSITIONS = {
         "J2": 0,
         "J3": 0,
     },
-    MOVETO_IK: {
-        "J2": None,
-        "J3": None,
-    },
 }
 
 
@@ -41,89 +37,133 @@ async def control_loop(
         dt = now - last_time
         last_time = now
 
-        # -------------------------
-        # Update IK positions (mm)
-        # -------------------------
+        # -------------------------------------------------
+        # Integrate IK cartesian position (mm space)
+        # -------------------------------------------------
         commanded_inputs["ik_z_pos"] += commanded_inputs["ik_z_vel"] * dt
         commanded_inputs["ik_x_pos"] += commanded_inputs["ik_x_vel"] * dt
 
-        # -------------------------
-        # Determine move mode
-        # -------------------------
         move_input = commanded_inputs.get("moveto_ready", 0)
-        move_input_enum = int(move_input) if move_input > 0.5 else 0
+        move_mode = int(move_input) if move_input > 0.5 else 0
 
-        move_target = {}
+        # =================================================
+        # IK MODE (absolute position control)
+        # =================================================
+        if move_mode == MOVETO_IK:
 
-        if move_input_enum in MOVETO_POSITIONS:
-            move_target = MOVETO_POSITIONS[move_input_enum].copy()
+            ik_target = [
+                commanded_inputs["ik_x_pos"] / 1000.0,  # mm → m
+                0,
+                commanded_inputs["ik_z_pos"] / 1000.0,
+            ]
 
-            # IK dynamic position update
-            if move_input_enum == MOVETO_IK:
-                ik_target = [
-                    commanded_inputs["ik_x_pos"] / 1000.0,  # mm -> m
-                    0,
-                    commanded_inputs["ik_z_pos"] / 1000.0,
-                ]
+            # Solve IK (updates arm_model.joints)
+            solve_ik(arm_model.joints, arm_model.links, ik_target)
 
-                solve_ik(arm_model.joints, arm_model.links, ik_target)
+            j2_target = arm_model.joints[1].angle_deg
+            j3_target = -arm_model.joints[2].angle_deg
 
-                # J2 / J3 only
-                move_target["J2"] = arm_model.joints[1].angle_deg
-                move_target["J3"] = -arm_model.joints[2].angle_deg
+            for joint, actuator in actuators:
 
-            # Enable diff-pos mode
-            for joint in move_target.keys():
-                control_modes[joint] = 1
+                if joint == "J2":
+                    actuator.set_position(j2_target)
+                    await control_socket.outputs.update_output(
+                        "J2_position_cmd", j2_target
+                    )
+
+                elif joint == "J3":
+                    actuator.set_position(j3_target)
+                    await control_socket.outputs.update_output(
+                        "J3_position_cmd", j3_target
+                    )
+
+                else:
+                    # Other joints remain velocity-controlled
+                    vel = commanded_inputs.get(joint, 0.0)
+                    actuator.set_velocity(vel)
+                    await control_socket.outputs.update_output(
+                        f"{joint}_velocity_cmd", vel
+                    )
+
+        # =================================================
+        # PRESET MOVE MODES (READY / STOW)
+        # =================================================
+        elif move_mode in MOVETO_POSITIONS:
+
+            move_target = MOVETO_POSITIONS[move_mode]
+
+            for joint, actuator in actuators:
+
+                if joint in move_target:
+                    target_pos = move_target[joint]
+                    current_pos = actuator.get_position()
+
+                    velocity_cmd = clamp(
+                        shortest_angle_delta(current_pos, target_pos),
+                        -10,
+                        10,
+                    )
+
+                    if isinstance(actuator, ODriveActuator):
+                        actuator.set_velocity(velocity_cmd / 360.0)
+                    else:
+                        actuator.set_velocity(velocity_cmd)
+
+                    await control_socket.outputs.update_output(
+                        f"{joint}_velocity_cmd",
+                        velocity_cmd,
+                    )
+                else:
+                    vel = commanded_inputs.get(joint, 0.0)
+                    actuator.set_velocity(vel)
+
+        # =================================================
+        # NORMAL MANUAL VELOCITY MODE
+        # =================================================
         else:
-            for joint in ["J2", "J3"]:
-                control_modes[joint] = 0
+            for joint, actuator in actuators:
+                vel = commanded_inputs.get(joint, 0.0)
 
-        # -------------------------
-        # Actuator Control
-        # -------------------------
-        for joint, actuator in actuators:
-            velocity_cmd = 0.0
-            mode = control_modes.get(joint, 0)
+                if isinstance(actuator, ODriveActuator):
+                    actuator.set_velocity(vel / 360.0)
+                else:
+                    actuator.set_velocity(vel)
 
-            if mode == 0:
-                velocity_cmd = commanded_inputs[joint]
-            elif joint in move_target:
-                target_pos = move_target[joint]
-                current_pos = actuator.get_position()
-                velocity_cmd = clamp(
-                    shortest_angle_delta(current_pos, target_pos),
-                    -10,
-                    10,
+                await control_socket.outputs.update_output(
+                    f"{joint}_velocity_cmd",
+                    vel,
                 )
 
-            if isinstance(actuator, ODriveActuator):
-                actuator.set_velocity(velocity_cmd / 360.0)
-            else:
-                actuator.set_velocity(velocity_cmd)
-
-            await control_socket.outputs.update_output(
-                f"{joint}_velocity_cmd",
-                velocity_cmd,
-            )
-
         await asyncio.sleep(interval)
 
 
+# ---------------------------------------------------------
+# HEARTBEAT LOOP
+# ---------------------------------------------------------
 async def heartbeat_loop(shutdown_event, interval: float):
     while not shutdown_event.is_set():
-        print("HEARTBEAT")  # watchdog requirement
+        print("HEARTBEAT")
         await asyncio.sleep(interval)
 
 
+# ---------------------------------------------------------
+# TELEMETRY LOOP
+# ---------------------------------------------------------
 async def telemetry_loop(actuators, control_socket, shutdown_event, interval: float):
     while not shutdown_event.is_set():
         for joint, actuator in actuators:
             try:
                 pos = actuator.get_position()
                 vel = actuator.get_velocity()
-                await control_socket.outputs.update_output(f"{joint}_position", pos)
-                await control_socket.outputs.update_output(f"{joint}_velocity", vel)
+
+                await control_socket.outputs.update_output(
+                    f"{joint}_position", pos
+                )
+                await control_socket.outputs.update_output(
+                    f"{joint}_velocity", vel
+                )
+
             except Exception as e:
                 print(f"Telemetry failed for {joint}: {e}")
+
         await asyncio.sleep(interval)
