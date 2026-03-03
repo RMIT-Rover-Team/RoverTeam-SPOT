@@ -4,6 +4,7 @@ import json
 import logging
 import math
 import signal
+from pathlib import Path
 
 from sharedlib.controlsocket.controlsocket import ControlSocket
 from sharedlib.controlsocket import schema
@@ -18,7 +19,7 @@ from kinematics.util import shortest_angle_delta, clamp
 from kinematics.arm_loader import load_arm_from_file
 from kinematics.ik import solve_ik_vel
 
-ARM_MODEL_PATH = "kinematics/arm.json5"  # change to your config path
+ARM_MODEL_PATH = Path(__file__).parent / "kinematics" / "arm.json5"  # change to your config path
 
 # -------------------------
 # LOGGING
