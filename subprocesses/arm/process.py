@@ -51,33 +51,20 @@ def make_input_callback(joint_name: str, commanded_inputs: dict):
 # -------------------------
 # CONTROL LOOP
 # -------------------------
-async def control_loop(actuators, commanded_inputs, controllers, control_socket: ControlSocket, interval: float):
-    last_time = asyncio.get_event_loop().time()
-
+async def control_loop(actuators, commanded_inputs, control_socket: ControlSocket, interval: float):
     while not shutdown_event.is_set():
-        now = asyncio.get_event_loop().time()
-        dt = now - last_time
-        last_time = now
-
         for joint, actuator in actuators:
-            measured_pos = actuator.get_position()
-            input_velocity = commanded_inputs[joint]  # deg/s
+            target_deg_per_sec = commanded_inputs[joint]
 
-            velocity_cmd = controllers[joint].update(
-                measured_position=measured_pos,
-                commanded_velocity=input_velocity,
-                dt=dt,
-            )
-
-            # ODrive expects turns/s
+            # ODrive expects turns/sec
             if isinstance(actuator, ODriveActuator):
-                actuator.set_velocity(velocity_cmd / 360.0)
+                actuator.set_velocity(target_deg_per_sec / 360.0)
             else:
-                actuator.set_velocity(velocity_cmd)
+                actuator.set_velocity(target_deg_per_sec)
 
             await control_socket.outputs.update_output(
                 f"{joint}_velocity_cmd",
-                velocity_cmd,
+                target_deg_per_sec,
             )
 
         await asyncio.sleep(interval)
@@ -204,7 +191,7 @@ async def main(
     # -------------------------
     tasks = [
         asyncio.create_task(manager.loop(), name="manager_loop"),
-        asyncio.create_task(control_loop(actuators, commanded_inputs, controllers, control_socket, status_interval), name="control_loop"),
+        asyncio.create_task(control_loop(actuators, commanded_inputs, control_socket, status_interval), name="control_loop"),
         asyncio.create_task(heartbeat_loop(control_socket, heartbeat_interval), name="heartbeat_loop"),
         asyncio.create_task(telemetry_loop(actuators, control_socket, telemetry_interval), name="telemetry_loop"),
     ]
