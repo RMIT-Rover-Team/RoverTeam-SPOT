@@ -52,6 +52,21 @@ def make_input_callback(joint_name: str, commanded_inputs: dict):
 # -------------------------
 # CONTROL LOOP
 # -------------------------
+
+MOVETO_READY = 1
+MOVETO_STOW = 2
+
+MOVETO_POSITIONS = {
+    MOVETO_READY: {
+        "J2": 70,  # deg
+        "J3": 50,  # deg
+    },
+    MOVETO_STOW: {
+        "J2": 0,   # deg
+        "J3": 0,   # deg
+    }
+}
+
 async def control_loop(actuators, commanded_inputs, control_modes, control_socket: ControlSocket, interval: float):
     last_time = asyncio.get_event_loop().time()
 
@@ -60,13 +75,23 @@ async def control_loop(actuators, commanded_inputs, control_modes, control_socke
         dt = now - last_time
         last_time = now
 
-        if commanded_inputs.get("moveto_ready", 0) > 0.5:
-            control_modes["J2"] = 1
-            control_modes["J3"] = 1
+        # Determine move-to mode
+        move_input = commanded_inputs.get("moveto_ready", 0)
+
+        if move_input > 0.5:
+            # If the input corresponds to a known move-to enum
+            move_target = MOVETO_POSITIONS.get(int(move_input), {})
+            
+            # Enable differential position mode for all joints in this move
+            for joint in move_target.keys():
+                control_modes[joint] = 1
         else:
-            control_modes["J2"] = 0
-            control_modes["J3"] = 0
-    
+            # No move-to command, revert joints to normal velocity
+            move_target = {}
+            for joint in ["J2", "J3"]:  # or any joints you want to reset
+                control_modes[joint] = 0
+
+        # Control each actuator
         for joint, actuator in actuators:
             target_input = commanded_inputs[joint]  # deg/s or desired pos depending on mode
             mode = control_modes.get(joint, 0)      # default to regular velocity mode
@@ -76,16 +101,11 @@ async def control_loop(actuators, commanded_inputs, control_modes, control_socke
             if mode == 0:
                 # Regular velocity control
                 velocity_cmd = target_input
-            elif mode == 1:
-                if joint == "J2":
-                    target_pos = 70#deg
-                if joint == "J3":
-                    target_pos = 50#deg
-
+            elif mode == 1 and joint in move_target:
+                target_pos = move_target[joint]
                 current_pos = actuator.get_position()
-                velocity_cmd = clamp(shortest_angle_delta(current_pos, target_pos), -10, 10)
-
-            #logger.log(logging.INFO, f"Control loop for {joint}: target_input={target_input}, mode={mode}, velocity_cmd={velocity_cmd}")
+                # Clamp velocity to [-10, 10] deg/s
+                velocity_cmd = max(min(shortest_angle_delta(current_pos, target_pos), 10), -10)
 
             # ODrive expects turns/sec
             if isinstance(actuator, ODriveActuator):
