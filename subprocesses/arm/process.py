@@ -149,7 +149,7 @@ async def main(
     commanded_inputs = {joint: 0.0 for joint, _ in actuators}
 
     controllers = {
-        joint: DifferentialVelocityController(max_speed_deg_s=100.0)
+        joint: DifferentialVelocityController(max_speed_deg_s=10.0)
         for joint, _ in actuators
     }
 
