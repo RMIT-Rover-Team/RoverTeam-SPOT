@@ -204,7 +204,7 @@ async def main(
     # -------------------------
     tasks = [
         asyncio.create_task(manager.loop(), name="manager_loop"),
-        asyncio.create_task(control_loop(actuators, commanded_inputs, controllers, control_socket, status_interval),name="control_loop"),
+        asyncio.create_task(control_loop(actuators, commanded_inputs, controllers, control_socket, status_interval), name="control_loop"),
         asyncio.create_task(heartbeat_loop(control_socket, heartbeat_interval), name="heartbeat_loop"),
         asyncio.create_task(telemetry_loop(actuators, control_socket, telemetry_interval), name="telemetry_loop"),
     ]
