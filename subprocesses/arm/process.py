@@ -80,8 +80,8 @@ async def telemetry_loop(actuators, control_socket: ControlSocket, interval: flo
     while not shutdown_event.is_set():
         for joint, actuator in actuators:
             try:
-                pos = await actuator.get_position()  # implement in each actuator
-                vel = await actuator.get_velocity()  # implement in each actuator
+                pos = actuator.get_position()  # implement in each actuator
+                vel = actuator.get_velocity()  # implement in each actuator
                 await control_socket.outputs.update_output(f"{joint}_position", pos)
                 await control_socket.outputs.update_output(f"{joint}_velocity", vel)
             except Exception as e:
