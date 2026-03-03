@@ -17,3 +17,6 @@ def shortest_angle_delta(current_deg: float, target_deg: float) -> float:
     if delta > 180.0:
         delta -= 360.0  # wrap into [-180, 180]
     return delta
+
+def clamp(x, minimum, maximum):
+    return max(min(x, maximum), minimum)

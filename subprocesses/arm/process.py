@@ -14,7 +14,7 @@ from sharedlib.actuator.myactuator import MyActuator
 from sharedlib.actuator.dummyactuator import DummyActuator
 from sharedlib.actuator.payloadActuator import PayloadActuator
 
-from kinematics.util import shortest_angle_delta
+from kinematics.util import shortest_angle_delta, clamp
 
 # -------------------------
 # LOGGING
@@ -83,7 +83,7 @@ async def control_loop(actuators, commanded_inputs, control_modes, control_socke
                     target_pos = 50#deg
 
                 current_pos = actuator.get_position()
-                velocity_cmd = math.clamp(shortest_angle_delta(current_pos, target_pos), -10, 10)
+                velocity_cmd = clamp(shortest_angle_delta(current_pos, target_pos), -10, 10)
 
             #logger.log(logging.INFO, f"Control loop for {joint}: target_input={target_input}, mode={mode}, velocity_cmd={velocity_cmd}")
 
