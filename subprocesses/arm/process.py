@@ -64,9 +64,9 @@ async def control_loop(actuators, commanded_inputs, control_modes, control_socke
                 # Regular velocity control
                 velocity_cmd = target_input
             elif mode == 1:
-                actuator_pos = 0#actuator.get_position()
-                delta = 67 - actuator_pos
-                velocity_cmd = math.clamp(delta, -100, 100)  # simple P controller with max speed limit
+                velocity_cmd = 20
+
+            logger.log(logging.INFO, f"Control loop for {joint}: target_input={target_input}, mode={mode}, velocity_cmd={velocity_cmd}")
 
             # ODrive expects turns/sec
             if isinstance(actuator, ODriveActuator):
