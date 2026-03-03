@@ -69,7 +69,23 @@ async def control_loop(actuators, commanded_inputs, control_socket: ControlSocke
 # -------------------------
 async def heartbeat_loop(control_socket: ControlSocket, interval: float):
     while not shutdown_event.is_set():
-        print("HEARTBEAT")
+        await control_socket.outputs.update_output("heartbeat", True)
+        await asyncio.sleep(interval)
+
+
+# -------------------------
+# TELEMETRY LOOP (POSITION + VELOCITY)
+# -------------------------
+async def telemetry_loop(actuators, control_socket: ControlSocket, interval: float):
+    while not shutdown_event.is_set():
+        for joint, actuator in actuators:
+            try:
+                pos = await actuator.get_position()  # implement in each actuator
+                vel = await actuator.get_velocity()  # implement in each actuator
+                await control_socket.outputs.update_output(f"{joint}_position", pos)
+                await control_socket.outputs.update_output(f"{joint}_velocity", vel)
+            except Exception as e:
+                logger.warning(f"Telemetry read failed for {joint}: {e}")
         await asyncio.sleep(interval)
 
 
@@ -82,6 +98,7 @@ async def main(
     ws_name: str,
     status_interval: float,
     heartbeat_interval: float,
+    telemetry_interval: float = 0.1,
     dev: bool = False,
 ):
     # -------------------------
@@ -152,6 +169,8 @@ async def main(
     # Register outputs
     for joint, _ in actuators:
         control_socket.outputs.register_output(f"{joint}_velocity_cmd")
+        control_socket.outputs.register_output(f"{joint}_position")
+        control_socket.outputs.register_output(f"{joint}_velocity")
     control_socket.outputs.register_output("heartbeat")
 
     await control_socket.start()
@@ -164,6 +183,7 @@ async def main(
         asyncio.create_task(manager.loop(), name="manager_loop"),
         asyncio.create_task(control_loop(actuators, commanded_inputs, control_socket, status_interval), name="control_loop"),
         asyncio.create_task(heartbeat_loop(control_socket, heartbeat_interval), name="heartbeat_loop"),
+        asyncio.create_task(telemetry_loop(actuators, control_socket, telemetry_interval), name="telemetry_loop"),
     ]
 
     # Arm ODrive actuators
@@ -213,6 +233,7 @@ if __name__ == "__main__":
     parser.add_argument("--ws_name", type=str, default="velocity_control")
     parser.add_argument("--status_interval", type=float, default=0.02)
     parser.add_argument("--heartbeat", type=float, default=5.0)
+    parser.add_argument("--telemetry_interval", type=float, default=0.1, help="Telemetry interval in seconds")
     parser.add_argument("--dev", action="store_true", default=False, help="Enable developer mode")
 
     args = parser.parse_args()
@@ -224,6 +245,7 @@ if __name__ == "__main__":
             args.ws_name,
             args.status_interval,
             args.heartbeat,
+            telemetry_interval=args.telemetry_interval,
             dev=args.dev,
         )
     )
