@@ -1,7 +1,7 @@
 # control_loops.py
 
 import asyncio
-from kinematics.util import shortest_angle_delta, clamp
+from kinematics.util import closest_multi_turn_target, shortest_angle_delta, clamp
 from kinematics.ik import solve_ik
 from sharedlib.actuator.odrive import ODriveActuator
 
@@ -52,38 +52,39 @@ async def control_loop(
         if move_mode == MOVETO_IK:
 
             ik_target = [
-                commanded_inputs["ik_x_pos"] / 1000.0,  # mm → m
+                commanded_inputs["ik_x_pos"] / 1000.0,
                 0,
                 commanded_inputs["ik_z_pos"] / 1000.0,
             ]
 
-            # Solve IK (updates arm_model.joints)
             solve_ik(arm_model.joints, arm_model.links, ik_target)
 
-            j2_target = arm_model.joints[1].angle_deg
-            j3_target = -arm_model.joints[2].angle_deg
+            j2_raw = arm_model.joints[1].angle_deg
+            j3_raw = -arm_model.joints[2].angle_deg
 
             for joint, actuator in actuators:
 
                 if joint == "J2":
-                    actuator.set_position(j2_target)
+                    current = actuator.get_position()
+                    target = closest_multi_turn_target(current, j2_raw)
+                    actuator.set_position(target)
+
                     await control_socket.outputs.update_output(
-                        "J2_position_cmd", j2_target
+                        "J2_position_cmd", target
                     )
 
                 elif joint == "J3":
-                    actuator.set_position(j3_target)
+                    current = actuator.get_position()
+                    target = closest_multi_turn_target(current, j3_raw)
+                    actuator.set_position(target)
+
                     await control_socket.outputs.update_output(
-                        "J3_position_cmd", j3_target
+                        "J3_position_cmd", target
                     )
 
                 else:
-                    # Other joints remain velocity-controlled
                     vel = commanded_inputs.get(joint, 0.0)
                     actuator.set_velocity(vel)
-                    await control_socket.outputs.update_output(
-                        f"{joint}_velocity_cmd", vel
-                    )
 
         # =================================================
         # PRESET MOVE MODES (READY / STOW)

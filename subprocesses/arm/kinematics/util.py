@@ -20,3 +20,11 @@ def shortest_angle_delta(current_deg: float, target_deg: float) -> float:
 
 def clamp(x, minimum, maximum):
     return max(min(x, maximum), minimum)
+
+def closest_multi_turn_target(current_pos_deg: float, target_deg: float) -> float:
+    """
+    Given a current multi-turn position and a desired single-turn angle,
+    return the closest equivalent multi-turn target.
+    """
+    delta = shortest_angle_delta(current_pos_deg, target_deg)
+    return current_pos_deg + delta
