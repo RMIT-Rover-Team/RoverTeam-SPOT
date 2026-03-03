@@ -107,9 +107,9 @@ async def control_loop(actuators, commanded_inputs, control_modes, arm_model, co
         if move_input_enum == MOVETO_IK:
             ik_target = [commanded_inputs["ik_x_pos"] / 1000, 0, commanded_inputs["ik_z_pos"] / 1000]
             # compute joint velocities for J1, J2, J3
-            joint_positions = solve_ik(arm_model.joints, arm_model.links, ik_target)
-            move_target["J2"] = joint_positions[1]  # theta1
-            move_target["J3"] = joint_positions[2]  # theta2
+            solve_ik(arm_model.joints, arm_model.links, ik_target)
+            move_target["J2"] = arm_model.joints[1].angle_deg
+            move_target["J3"] = arm_model.joints[2].angle_deg
 
         # Control each actuator
         for idx, (joint, actuator) in enumerate(actuators):
