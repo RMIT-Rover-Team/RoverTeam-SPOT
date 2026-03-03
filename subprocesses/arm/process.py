@@ -64,7 +64,7 @@ async def control_loop(actuators, commanded_inputs, control_modes, control_socke
                 # Regular velocity control
                 velocity_cmd = target_input
             elif mode == 1:
-                velocity_cmd = 20
+                velocity_cmd = 0 - actuator.get_position()
 
             logger.log(logging.INFO, f"Control loop for {joint}: target_input={target_input}, mode={mode}, velocity_cmd={velocity_cmd}")
 
