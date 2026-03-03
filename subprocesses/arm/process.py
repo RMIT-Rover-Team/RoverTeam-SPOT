@@ -64,7 +64,7 @@ async def control_loop(actuators, commanded_inputs, control_modes, control_socke
                 # Regular velocity control
                 velocity_cmd = target_input
             elif mode == 1:
-                actuator_pos = actuator.get_position()
+                actuator_pos = 0#actuator.get_position()
                 delta = 67 - actuator_pos
                 velocity_cmd = math.clamp(delta, -100, 100)  # simple P controller with max speed limit
 
