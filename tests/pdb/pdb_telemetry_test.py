@@ -31,7 +31,7 @@ def test_handle_switch_voltage(manager):
     data = bytearray(8)
     data[0] = byte0
     data[1] = byte1
-    struct.pack_into(">f", data, 2, val)  # pack with big endian
+    struct.pack_into("<f", data, 2, val)  # pack with big endian
 
     # 4. Process
     manager.handle_can_message(msg_id, bytes(data))
@@ -51,7 +51,7 @@ def test_handle_bms_list(manager):
     data = bytearray(8)
     data[0] = byte0
     data[1] = byte1
-    struct.pack_into(">f", data, 2, val)  # pack with big endian
+    struct.pack_into("<f", data, 2, val)  # pack with big endian
 
     manager.handle_can_message(msg_id, bytes(data))
 

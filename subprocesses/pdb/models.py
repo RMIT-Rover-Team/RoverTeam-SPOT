@@ -1,5 +1,5 @@
 from dataclasses import asdict, dataclass
-from enum import IntEnum
+from enum import Enum, IntEnum
 
 
 class MasterID(IntEnum):
@@ -24,6 +24,13 @@ class AttributeID(IntEnum):
 class CommandID(IntEnum):
     TOGGLE = 0x04
     BROADCAST = 0x07
+
+
+class AttributeMultiplier(Enum):
+    VOLTAGEMULTIPLIER = 0.003125
+    CURRENTMULTIPLIER = 0.00030517578125
+    POWERMULTIPLIER = 0.2 * CURRENTMULTIPLIER
+    TEMPMULTIPLIER = 0.125
 
 
 @dataclass

@@ -56,6 +56,8 @@ async def pdb_telemetry_loop(pdb: PDBManager, interval: float):
             # Get the data
             data = pdb.get_snapshot()
             msg = json.dumps({"type": "pdb_data", "data": data})
+            # logger.info("attempting to send!")
+            # logger.info(f"{msg}")
             print(f"JSON {msg}")  # send data over to pdb
             await asyncio.sleep(interval)
     except Exception as e:
@@ -76,10 +78,13 @@ async def toggle_switch(channel: int, enable: int):
     if enable not in [0, 1]:
         raise HTTPException(status_code=400, detail="Enable must be 0 or 1")
 
-    await pdb.toggle_channel(BoardID.SWITCH, channel, bool(enable))
+    is_on = True if enable == 1 else False
 
-    state = "enabled" if enable else "disabled"
-    return {"message": f"Switch channel {state}"}
+    await pdb.toggle_channel(BoardID.SWITCH, channel, is_on)
+
+    logger.info(f"COMMAND: Switch Board | Channel: {channel} | State: {is_on}")
+
+    return {"message": f"Switch channel {'enabled' if is_on else 'disabled'}"}
 
 
 @app.post("/buck1/channel/{channel}/{enable}")
@@ -89,7 +94,9 @@ async def toggle_buck1(channel: int, enable: int):
     if enable not in [0, 1]:
         raise HTTPException(status_code=400, detail="Enable must be 0 or 1")
 
-    await pdb.toggle_channel(BoardID.BUCK1, channel, bool(enable))
+    is_on = True if enable == 1 else False
+
+    await pdb.toggle_channel(BoardID.BUCK1, channel, is_on)
     return {"message": f"Buck 1 channel {'enabled' if enable else 'disabled'}"}
 
 
@@ -98,7 +105,9 @@ async def toggle_buck2(channel: int, enable: int):
     if not (0 <= channel <= 4):
         raise HTTPException(status_code=400, detail="Channel does not exist")
 
-    await pdb.toggle_channel(BoardID.BUCK2, channel, bool(enable))
+    is_on = True if enable == 1 else False
+
+    await pdb.toggle_channel(BoardID.BUCK2, channel, is_on)
     return {"message": "Buck 2 updated"}
 
 
@@ -161,7 +170,7 @@ async def main(
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--ws_host", type=str, default="0.0.0.0")
-    parser.add_argument("--ws_port", type=int, default=8766)
+    parser.add_argument("--ws_port", type=int, default=5000)
     parser.add_argument("--ws_name", type=str, default="pdb_telemetry")
     parser.add_argument("--status_interval", type=float, default=0.02)
     parser.add_argument("--heartbeat", type=float, default=2.0)

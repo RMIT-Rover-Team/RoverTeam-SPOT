@@ -16,7 +16,7 @@ class PDBManager:
         self.buck1: List[ChannelMetrics] = [ChannelMetrics() for _ in range(2)]
         self.buck2: List[ChannelMetrics] = [ChannelMetrics() for _ in range(2)]
         self.bms: List[float] = [0.0] * 12
-        self.source_id = 0x42
+        self.source_id = 42
 
     def register(self, board_id):
         self.can.subscribe(
@@ -35,10 +35,14 @@ class PDBManager:
         attribute_id = data[0] & 0x0F
         channel_id = (data[1] >> 4) & 0x0F
 
+        # self.logger.info(f"destination_id: {destination_id}")
+        # self.logger.info(f"command_id: {command_id}")
+        # self.logger.info(f"channel_id: {channel_id}")
+        # self.logger.info(f"attribute_id: {attribute_id}")
         if command_id != CommandID.BROADCAST:
             return  # Not broadcast command
 
-        value = struct.unpack_from(">f", data, 2)[0]
+        value = struct.unpack_from("<f", data, 2)[0]
         board = self.get_board(source_id)
         attribute = self.get_attribute(attribute_id)
 
@@ -96,12 +100,14 @@ class PDBManager:
         }
 
     async def toggle_channel(self, board_id: int, channel: int, enable: bool):
-        can_id = (board_id << 6) | self.source_id
+        can_id = ((board_id & 0x3F) << 6) | (self.source_id & 0x3F)
 
-        byte0 = (CommandID.TOGGLE << 4) | 0x0
+        byte0 = ((CommandID.TOGGLE & 0x0F) << 4) | 0x0
 
         toggleState = 1 if enable else 0
-        byte1 = (channel << 4) | toggleState  # Channel (4 bits), Toggle State
+        byte1 = ((channel & 0x0F) << 4) | (
+            (toggleState & 0x01) << 3
+        )  # Channel (4 bits), Toggle State
 
         data = bytes([byte0, byte1, 0, 0, 0, 0, 0, 0])
 
