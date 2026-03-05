@@ -72,15 +72,18 @@ class ProcessManager:
 
             await asyncio.gather(*(self.start(sub) for sub in tiers[tier]))
 
-    async def start(self, sub: Subsystem):
+    async def start(self, sub: Subsystem, extra_args: list[str] = None):
         """
         Start a single subsystem.
+        - sub.extra_args are used as-is (allow duplicates)
+        - runtime extra_args are appended at the end
         """
 
         if sub.process and sub.process.returncode is None:
             self.log.warning(f"{sub.name} already running")
             return
 
+        # Base command
         cmd = [
             sys.executable,
             "-u",
@@ -89,9 +92,15 @@ class ProcessManager:
             str(HEARTBEAT_INTERVAL),
         ]
 
+        # Append config args exactly as they are
         if sub.extra_args:
             cmd.extend(sub.extra_args)
 
+        # Append runtime args (overrides handled manually if needed)
+        if extra_args:
+            cmd.extend(extra_args)
+
+        # Launch subprocess
         try:
             env = os.environ.copy()
             ROOT = Path(sub.path).resolve().parents[2]
@@ -108,15 +117,20 @@ class ProcessManager:
             sub.last_heartbeat = self.loop.time()
             sub.intentionally_stopped = False
 
-            self.log.success(f"{sub.name} started")
+            self.log.success(f"{sub.name} started with args: {' '.join(cmd[3:])}")
 
-            # Start stream readers
-            asyncio.create_task(self._read_stream(sub, sub.process.stdout, "stdout"))
-            asyncio.create_task(self._read_stream(sub, sub.process.stderr, "stderr"))
+            # Start stream readers safely
+            sub._tasks = [
+                asyncio.create_task(self._read_stream(sub, sub.process.stdout, "stdout")),
+                asyncio.create_task(self._read_stream(sub, sub.process.stderr, "stderr")),
+            ]
 
         except Exception as e:
             self.log.error(f"Failed to start {sub.name}: {e}")
             sub.process = None
+
+
+
 
     async def stop(self, sub: Subsystem):
         """

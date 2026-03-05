@@ -1,124 +1,122 @@
-# odrive_ramp.py
-
 import struct
-import time
 from .actuator_base import Actuator
-
 
 class ODriveActuator(Actuator):
     """
-    Minimal ODrive CANSimple velocity-only actuator with automatic arming
-    and smooth velocity ramping.
+    ODrive CANSimple actuator with:
+    - automatic arming/disarming
+    - direct velocity commands
+    - position/velocity telemetry from ODrive broadcasts
     """
 
     # CANSimple command IDs
     CMD_SET_AXIS_STATE = 0x07
     CMD_SET_INPUT_VEL = 0x0D
-    CMD_CLEAR_ERRORS = 0x18
+    CMD_GET_ENCODER_ESTIMATES = 0x09  # broadcasted automatically by ODrive
+    CMD_RX_SDO = 0x04
 
+    # Axis states
     AXIS_STATE_IDLE = 1
     AXIS_STATE_CLOSED_LOOP = 8
 
-    def __init__(self, name: str, node_id: int, inverted: bool = False, max_accel: float = 10.0):
-        """
-        Args:
-            name: actuator name
-            node_id: CAN node ID
-            inverted: flip velocity direction
-            max_accel: maximum velocity change per loop (turns/sec^2)
-        """
+    def __init__(self, name: str, node_id: int, inverted: bool = False):
         super().__init__(name=name, motor_id=node_id)
-
         self.node_id = node_id
         self.inverted = inverted
-
         self._armed = False
         self._arm_requested = False
-        self._last_velocity = 0.0
-        self.max_accel = max_accel  # turns/sec per loop
-        self._last_time = time.time()
         self._lastAxisState = self.AXIS_STATE_IDLE
 
-    # -------------------------------------------------
-    # CAN ID helper
-    # -------------------------------------------------
+    # -------------------------
+    # CAN helper
+    # -------------------------
     def _msg_id(self, cmd: int) -> int:
+        """Build message ID using node ID + command."""
         return (self.node_id << 5) | cmd
 
-    # -------------------------------------------------
+    # -------------------------
     # Arming
-    # -------------------------------------------------
+    # -------------------------
     def request_arm(self):
         self._arm_requested = True
 
     def request_disarm(self):
         self._arm_requested = False
         self._armed = False
-        self._last_velocity = 0.0
 
+    # -------------------------
+    # Axis state
+    # -------------------------
     def build_axis_state_command(self):
-        """
-        Send axis state change if needed.
-        """
         target_state = (
-            self.AXIS_STATE_CLOSED_LOOP
-            if self._arm_requested
-            else self.AXIS_STATE_IDLE
+            self.AXIS_STATE_CLOSED_LOOP if self._arm_requested else self.AXIS_STATE_IDLE
         )
 
         if target_state == self._lastAxisState:
-            return None  # no change needed
-        
-        self._lastAxisState = target_state
-
-        payload = struct.pack("<I", target_state)
-        return self._msg_id(self.CMD_SET_AXIS_STATE), payload
-
-    # -------------------------------------------------
-    # Velocity with ramping
-    # -------------------------------------------------
-    def build_velocity_command(self):
-        if not self._arm_requested:
-            # reset velocity when disarmed
-            self._last_velocity = 0.0
             return None
 
-        # Compute time since last update
-        now = time.time()
-        dt = now - self._last_time
-        self._last_time = now
+        self._lastAxisState = target_state
 
-        # Apply ramp limiting
-        target_vel = self.target_velocity
-        if self.inverted:
-            target_vel *= -1
+        opcode = 0x01  # SDO write
+        endpoint_id = 368  # Axis state parameter
+        reserved = 0
+        value = 0x02 # Velocity Mode
 
-        delta = target_vel - self._last_velocity
-        max_delta = self.max_accel * dt
-        if abs(delta) > max_delta:
-            delta = max_delta if delta > 0 else -max_delta
+        return [
+            (self._msg_id(self.CMD_RX_SDO), struct.pack("<BHBI", opcode, endpoint_id, reserved, value)),
+            (self._msg_id(self.CMD_SET_AXIS_STATE), struct.pack("<I", target_state))
+        ]
 
-        ramped_vel = self._last_velocity + delta
-        self._last_velocity = ramped_vel
+    # -------------------------
+    # Direct velocity commands
+    # -------------------------
+    def build_velocity_command(self):
+        if not self._arm_requested:
+            return None
 
-        # Optional feedforward torque (can tweak)
-        torque_ff = 0.0
+        target_vel = -self.target_velocity if self.inverted else self.target_velocity
+        torque_ff = 0.0  # optional feedforward
 
-        payload = struct.pack("<ff", ramped_vel, torque_ff)
+        payload = struct.pack("<ff", target_vel, torque_ff)
         return self._msg_id(self.CMD_SET_INPUT_VEL), payload
 
-    # -------------------------------------------------
-    # Not used
-    # -------------------------------------------------
+    # -------------------------
+    # Handle incoming CAN broadcasts
+    # -------------------------
+    def handle_can_message(self, msg_id: int, data: bytes):
+        """
+        Handle incoming encoder estimate broadcasts.
+        Data format: pos (float32) + vel (float32)
+        """
+        expected_id = self._msg_id(self.CMD_GET_ENCODER_ESTIMATES)
+        if msg_id != expected_id:
+            return  # ignore unrelated messages
+
+        if len(data) < 8:
+            return  # ignore invalid frames
+
+        try:
+            pos, vel = struct.unpack("<ff", data[:8])
+            self._update_position(pos * 360.0)  # turns → degrees
+            self._last_velocity = vel * 360.0
+            self.connected = True
+        except struct.error as e:
+            print(f"[ODriveActuator {self.name}] CAN decode error: {e}")
+
+
     def build_position_command(self):
+        """ODrive doesn’t use position commands over CAN."""
         return None
 
     def build_position_request(self):
+        """ODrive broadcasts position automatically; no request needed."""
         return None
+    
+    # -------------------------
+    # Accessors
+    # -------------------------
+    def get_position(self) -> float:
+        return self._position
 
-    # -------------------------------------------------
-    # Handle incoming CAN messages (optional)
-    # -------------------------------------------------
-    def handle_can_message(self, msg_id: int, data: bytes):
-        # Currently ignoring feedback
-        pass
+    def get_velocity(self) -> float:
+        return super().get_velocity()

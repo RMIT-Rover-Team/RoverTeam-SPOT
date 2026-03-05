@@ -3,11 +3,8 @@ import asyncio
 import logging
 import subprocess
 import time
-from aiortc import VideoStreamTrack
-from aiortc.contrib.media import MediaPlayer
 
-
-class V4L2CameraTrack(VideoStreamTrack):
+class V4L2CameraTrack:
     WIDTH = 640
     HEIGHT = 480
     FPS = 30
@@ -16,8 +13,6 @@ class V4L2CameraTrack(VideoStreamTrack):
     MAX_RETRIES = 10
 
     def __init__(self, index: int, label: str, logger: logging.Logger, width: int, height: int):
-        super().__init__()
-
         self.index = index
         self.label = label
         self.logger = logger
@@ -29,7 +24,8 @@ class V4L2CameraTrack(VideoStreamTrack):
         if not os.path.exists(self.device):
             raise RuntimeError(f"{self.device} not found")
 
-        self.player = None
+        # File handle for raw capture
+        self._fd = None
 
     # --------------------------------------------------
 
@@ -37,14 +33,8 @@ class V4L2CameraTrack(VideoStreamTrack):
         self.logger.warning(f"[{self.label}] Forcing device release")
 
         subprocess.run(["fuser", "-k", self.device],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL
-        )
-
-        subprocess.run(["pkill", "-9", "ffmpeg"],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL
-        )
+                       stdout=subprocess.DEVNULL,
+                       stderr=subprocess.DEVNULL)
 
         time.sleep(0.3)
 
@@ -69,23 +59,14 @@ class V4L2CameraTrack(VideoStreamTrack):
 
     # --------------------------------------------------
 
-    def _open_player(self):
+    def _open_device(self):
         self._nuke_device()
         self._force_mjpeg()
+        self.logger.info(f"[{self.label}] Device ready at {self.WIDTH}x{self.HEIGHT} @ {self.FPS} FPS")
 
-        options = {
-            "input_format": "mjpeg",
-            "framerate": str(self.FPS),
-            "video_size": f"{self.WIDTH}x{self.HEIGHT}",
-        }
+        # Open the device file for reading frames (raw MJPEG)
+        self._fd = open(self.device, "rb", buffering=0)
 
-        self.logger.info(f"[{self.label}] Opening MJPEG stream")
-
-        self.player = MediaPlayer(
-            self.device,
-            format="v4l2",
-            options=options,
-        )
     # --------------------------------------------------
 
     async def recv(self):
@@ -93,10 +74,14 @@ class V4L2CameraTrack(VideoStreamTrack):
 
         while True:
             try:
-                if not self.player:
-                    self._open_player()
+                if not self._fd:
+                    self._open_device()
 
-                frame = await self.player.video.recv()
+                # Read a single MJPEG frame from the device
+                # NOTE: adjust size if necessary or use a proper MJPEG parser
+                # Here we just read raw bytes
+                frame = self._fd.read(self.WIDTH * self.HEIGHT * 3)  # rough placeholder
+
                 return frame
 
             except Exception as e:
@@ -116,16 +101,15 @@ class V4L2CameraTrack(VideoStreamTrack):
 
     def _cleanup(self):
         try:
-            if self.player:
+            if self._fd:
                 try:
-                    self.player.video.stop()
+                    self._fd.close()
                 except Exception:
                     pass
         finally:
-            self.player = None
+            self._fd = None
 
     # --------------------------------------------------
 
     def stop(self):
         self._cleanup()
-        super().stop()
