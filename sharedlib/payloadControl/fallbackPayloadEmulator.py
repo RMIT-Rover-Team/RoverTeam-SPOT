@@ -33,3 +33,5 @@ class PyRover:
         print("Toggle motor state " + str(motorID) + " to " + str(value))
         return {}
     
+    def BroadcastDataPoint(): #Get pending inputs of broadcast
+        return ({'from': 0, 'stream_id': 0, 'channel_id': 0}, 0.0)
