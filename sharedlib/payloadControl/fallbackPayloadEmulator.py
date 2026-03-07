@@ -1,3 +1,4 @@
+import time
 class PyRover:
     def __init__(self, canbus, masterID):
         print("IMPORT FAIL EMULATING PAYLOAD")
@@ -33,5 +34,6 @@ class PyRover:
         print("Toggle motor state " + str(motorID) + " to " + str(value))
         return {}
     
-    def BroadcastDataPoint(): #Get pending inputs of broadcast
+    def BroadcastDataPoint(self): #Get pending inputs of broadcast
+        time.sleep(0.1)
         return ({'from': 0, 'stream_id': 0, 'channel_id': 0}, 0.0)

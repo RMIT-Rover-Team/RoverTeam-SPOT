@@ -5,6 +5,7 @@
         "canbus",
         "telemetry",
         "cameras",
+        "IMU"
         // Manually start arm, excavator, or science depending on payload
         // "arm"
         // "excavator"
