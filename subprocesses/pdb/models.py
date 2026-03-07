@@ -1,5 +1,7 @@
 from dataclasses import asdict, dataclass
 from enum import Enum, IntEnum
+import datetime
+from typing import Optional, Union
 
 
 class MasterID(IntEnum):
@@ -56,6 +58,7 @@ class AttrMultiplier(Enum):
     POWERMULTIPLIER = 0.2 * CURRENTMULTIPLIER
     TEMPMULTIPLIER = 0.125
 
+
 @dataclass
 class ChannelMetrics:
     voltage: float = 0.0
@@ -65,3 +68,10 @@ class ChannelMetrics:
 
     def to_dict(self):
         return asdict(self)
+    
+
+@dataclass
+class TelemetryState:
+    metric_data: Union[list[ChannelMetrics], list[float]]
+    last_updated: datetime.datetime
+    pending_send: bool = False

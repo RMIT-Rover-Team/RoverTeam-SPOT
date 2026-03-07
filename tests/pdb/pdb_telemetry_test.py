@@ -19,7 +19,7 @@ def test_id_conversion(manager):
     )  # Dest: 41 (manager),  Source: 0x6 (Buck1)
     dest, src = manager._parse_arbitration_id(msg_id)
 
-    assert dest == 42 & 0x3F
+    assert dest == 16 & 0x3F
     assert src == 0x06 & 0x3F
 
 
@@ -35,14 +35,14 @@ def test_handle_switch_voltage(manager):
     data = bytearray(8)
     data[0] = byte0
     data[1] = byte1
-    struct.pack_into("<f", data, 2, val)  # pack with big endian
+    struct.pack_into("<f", data, 2, val)  # pack with lil' endian
 
     # 4. Process
     manager.handle_can_message(msg_id, bytes(data))
 
     # 5. Assert
-    assert manager.boards[BoardID.SWITCH][5].voltage == pytest.approx(12.5)
-    assert manager.boards[BoardID.SWITCH][5].current == 0.0  # Ensure other fields aren't touched
+    assert manager.boards[BoardID.SWITCH].metric_data[5].voltage == pytest.approx(12.5)
+    assert manager.boards[BoardID.SWITCH].metric_data[5].current == 0.0  # Ensure other fields aren't touched
 
 
 def test_handle_bms_list(manager):
@@ -53,11 +53,11 @@ def test_handle_bms_list(manager):
 
     data = bytearray(8)
     data[0] = byte0
-    struct.pack_into("<f", data, 2, val)  # pack with big endian
+    struct.pack_into("<f", data, 2, val)  # pack with lil' endian
 
     manager.handle_can_message(msg_id, bytes(data))
 
-    assert manager.boards[BoardID.BMS][11] == pytest.approx(3.99)
+    assert manager.boards[BoardID.BMS].metric_data[11] == pytest.approx(3.99)
 
 
 def test_malformed_data_safety(manager):

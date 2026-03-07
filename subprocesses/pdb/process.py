@@ -8,10 +8,11 @@ import uvicorn
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import PlainTextResponse
-from models import BoardID
 
 from sharedlib.canbus.client import CANClient
 from subprocesses.pdb.telemetry.manager import PDBManager
+
+from .models import BoardID
 
 
 # logger.log(25, msg) (SUCCESS)
@@ -42,6 +43,10 @@ shutdown_event = asyncio.Event()
 
 
 async def heartbeat_loop(interval: float):
+    """
+    Sends a heartbeat to the main supervisor to say the subprocess is alive.
+        interval -- interval in seconds
+    """
     while not shutdown_event.is_set():
         print("HEARTBEAT")
         await asyncio.sleep(interval)
@@ -50,7 +55,12 @@ async def heartbeat_loop(interval: float):
 # -------------------------
 # PDB Loops
 # -------------------------
-async def pdb_telemetry_loop(pdb: PDBManager, interval: float):
+async def pdb_telemetry_loop(pdb: PDBManager, interval: float = 1.0) ->  None:
+    """
+    Takes the state of PDBManager and sends it through the telemetry websocket. The topic of the pdb_telemetry_loop is pdb_data.
+        pdb -- The PDB manager that receives, sends and stores pdb data
+        interval -- interval in seconds
+    """
     try:
         while not shutdown_event.is_set():
             # Get the data
@@ -63,7 +73,13 @@ async def pdb_telemetry_loop(pdb: PDBManager, interval: float):
         logger.error(f"Sending PDB Telemetry Data ran into an error: {e}")
         request_shutdown()  # request shutdown to restart
 
-async def pdb_request_loop(pdb: PDBManager, interval: float = 1.0):
+
+async def pdb_request_loop(pdb: PDBManager, interval: float = 1.0) -> None:
+    """
+    Sends a request for PDB data from pdb manager to update it.
+        pdb -- The PDB manager that receives, sends and stores pdb data
+        interval -- interval in seconds
+    """
     try:
         logger.info(f"PDB: Starting sequenced polling (step: {interval}s)")
 
@@ -84,6 +100,9 @@ async def pdb_request_loop(pdb: PDBManager, interval: float = 1.0):
 
 @app.get("/ping")
 async def ping():
+    """
+    Pings frontend
+    """
     return PlainTextResponse("pdb")
 
 
@@ -127,11 +146,14 @@ async def toggle_buck2(channel: int, enable: int):
     await pdb.toggle_channel(BoardID.BUCK2, channel, is_on)
     return {"message": "Buck 2 updated"}
 
+
 @app.post("/bms/estop")
 async def estop_bms():
     await pdb.estop(BoardID.BMS)
     await pdb.estop(BoardID.BMS)
     await pdb.estop(BoardID.BMS)
+
+
 # -------------------------
 # CLEAN SHUTDOWN
 # -------------------------
@@ -174,8 +196,8 @@ async def main(
     server_task = asyncio.create_task(server.serve())
 
     heartbeat_task = asyncio.create_task(heartbeat_loop(heartbeat_interval))
-    # pdb_telemetry_task = asyncio.create_task(pdb_telemetry_loop(pdb, interval=1))
-    # pdb_polling_task = asyncio.create_task(pdb_request_loop(pdb, interval=1))
+    pdb_telemetry_task = asyncio.create_task(pdb_telemetry_loop(pdb, interval=1))
+    pdb_polling_task = asyncio.create_task(pdb_request_loop(pdb, interval=1))
 
     # Wait for shutdown...
     await shutdown_event.wait()
@@ -183,8 +205,8 @@ async def main(
     # Cleanup
     await server_task
     heartbeat_task.cancel()
-    # pdb_telemetry_task.cancel()
-    # pdb_polling_task.cancel()
+    pdb_telemetry_task.cancel()
+    pdb_polling_task.cancel()
 
     await asyncio.sleep(0)
     await can_client.close()

@@ -1,12 +1,13 @@
 import asyncio
 import dataclasses
+import datetime
 import logging
 import struct
 from typing import List, Optional, Union
 
 from sharedlib.canbus.client import CANClient
 
-from ..models import AttrID, BoardID, ChannelMetrics, CommandID
+from ..models import AttrID, BoardID, ChannelMetrics, CommandID, TelemetryState
 
 
 class PDBManager:
@@ -18,14 +19,16 @@ class PDBManager:
         self._valid_attr_ids = {a.value for a in AttrID}
         self._valid_cmd_ids = {CommandID.REQUESTDP, CommandID.ESTOP}
 
-        self.boards = {}
+        self.boards: dict[BoardID, TelemetryState] = {}
         for board in BoardID:
             if board == BoardID.BMS:
-                self.boards[board] = [0.0] * board.max_channels
+                metric_data = [0.0] * board.max_channels
             else:
-                self.boards[board] = [
-                    ChannelMetrics() for _ in range(board.max_channels)
-                ]
+                metric_data = [ChannelMetrics() for _ in range(board.max_channels)]
+
+            self.boards[board] = TelemetryState(
+                metric_data=metric_data, last_updated=datetime.datetime.now()
+            )
 
     # --- PUBLIC APIS ---
     def register(self, arbitration_id: int):
@@ -34,14 +37,13 @@ class PDBManager:
         )
 
     def register_all(self):
-        """Registers a """
         for board in BoardID:
             arb_id = self._build_arbitration_id(self.id, board)
             self.register(arb_id)
 
     def handle_can_message(self, msg_id: int, data: bytes):
-        dest_id, src_id, cmd_id, stream_id, channel_id = (
-            self._parse_can_msg(msg_id, data)
+        dest_id, src_id, cmd_id, stream_id, channel_id = self._parse_can_msg(
+            msg_id, data
         )
 
         is_valid_msg = self._validate_msg(
@@ -50,37 +52,32 @@ class PDBManager:
 
         if not is_valid_msg:
             return
-        
-        board = BoardID(src_id) 
-        board_data = self._get_board(board)
+
+        board_enum = BoardID(src_id)
+        state = self.boards[board_enum]
 
         value = struct.unpack_from("<f", data, 2)[0]
 
         stream_name = self._get_stream(stream_id)
 
         if src_id == BoardID.BMS:  # BMS
-            self.boards[BoardID.BMS][stream_id] = value
+            state.metric_data[stream_id] = value
         else:  # Channel Metrics
-            setattr(board_data[channel_id], stream_name, value)
+            stream_name = self._get_stream(stream_id)
+            if stream_name:
+                target_channel = state.metric_data[channel_id]
+                if isinstance(target_channel, ChannelMetrics):
+                    setattr(target_channel, stream_name, value)
 
-    def get_snapshot(self):
-        snapshot = {}
-        for board_id, data in self.boards.items():
-            key = board_id.name.lower()
-
-            if board_id == BoardID.BMS:
-                snapshot[key] = data
-            else:
-                snapshot[key] = [dataclasses.asdict(m) for m in data]
-        return snapshot
+        state.last_updated = datetime.datetime.now()
+        state.pending_send = True
 
     async def request_pdb_data(self):
         for board in BoardID:
             await self.request_board_data(board)
 
-
     async def request_board_data(self, board_id: Union[int, BoardID]):
-        board = BoardID(board_id) # cast just in case
+        board = BoardID(board_id)  # cast just in case
 
         for channel_idx in range(board.max_channels):
             await self.request_channel_data(board, channel_idx)
@@ -119,6 +116,7 @@ class PDBManager:
 
         data = bytearray(8)
         await self.can.send(can_id, bytes(data))
+
     # --- Internal functions ---
     # --- PARSING MSG
     @staticmethod
@@ -127,7 +125,7 @@ class PDBManager:
         src_id = arbitration_id & 0x3F
 
         return dest_id, src_id
-    
+
     def _parse_can_msg(
         self, msg_id: int, data: bytes
     ) -> tuple[int, int, int, int, int]:
@@ -136,11 +134,6 @@ class PDBManager:
         stream_id = data[0] & 0x0F
         channel_id = (data[1] >> 4) & 0x0F
         return dest_id, src_id, cmd_id, stream_id, channel_id
-
-
-    # --- GETTERS
-    def _get_board(self, board_id: BoardID) -> Union[List[ChannelMetrics], List[float]]:
-        return self.boards.get(board_id, [])
 
     @staticmethod
     def _get_stream(stream_id: int) -> str:
@@ -151,46 +144,45 @@ class PDBManager:
             AttrID.TEMP.value: "temp",
         }
         return stream_map.get(stream_id, "")
-    
 
     # --- MISC HELPERS
     @staticmethod
     def _build_arbitration_id(dest_id: int, src_id: int) -> int:
         return ((dest_id & 0x3F) << 6) | (src_id & 0x3F)
-    
-    
+
     def _validate_msg(
-        self, dest_id: int, src_id: int, cmd_id: int, stream_id: int, channel_id: int, data_len: int
+        self,
+        dest_id: int,
+        src_id: int,
+        cmd_id: int,
+        stream_id: int,
+        channel_id: int,
+        data_len: int,
     ) -> bool:
         # Check valid ids
-        if dest_id != (self.id & 0x1F) or src_id not in BoardID:
+        if dest_id != (self.id & 0x1F) or src_id not in [b_id for b_id in BoardID]:
             return False
-        
+
         if cmd_id not in self._valid_cmd_ids:
             return False
 
         if data_len < 8:
             return False
-        
+
         board = BoardID(src_id)
-        
+
         if src_id == BoardID.BMS:
             return 0 <= stream_id < board.max_channels
-            
+
         stream_name = self._get_stream(stream_id)
         if not stream_name:
             return False
-        
-        board_list = self.boards.get(board)
-        if not board_list and hasattr(self.boards[board][0], stream_name):
-            if self.logger:
-                self.logger.error(
-                    f"Validation Error: {stream_name} not in ChannelMetrics"
-                )
+
+        if board not in self.boards:
             return False
 
         return 0 <= channel_id < board.max_channels
-    
+
     # --- SEND COMMANDS
     async def _send_data_request(
         self, board_id: int, stream_id: int, channel_id: int = 0

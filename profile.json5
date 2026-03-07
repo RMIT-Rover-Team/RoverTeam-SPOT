@@ -4,7 +4,7 @@
     "processes": [
         "canbus",
         "telemetry",
-        "cameras",
+        // "cameras",
         "pdb",
         // Manually start arm, excavator, or science depending on payload
         // "arm"
