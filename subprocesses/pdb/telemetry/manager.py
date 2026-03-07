@@ -1,3 +1,4 @@
+import asyncio
 import dataclasses
 import logging
 import struct
@@ -5,110 +6,202 @@ from typing import List, Optional, Union
 
 from sharedlib.canbus.client import CANClient
 
-from ..models import AttributeID, BoardID, ChannelMetrics, CommandID
+from ..models import AttrID, BoardID, ChannelMetrics, CommandID
 
 
 class PDBManager:
-    def __init__(self, can_client: CANClient, logger: logging.Logger = None):
+    def __init__(self, can_client: CANClient, logger: Optional[logging.Logger] = None):
         self.can = can_client
         self.logger = logger
-        self.switch: List[ChannelMetrics] = [ChannelMetrics() for _ in range(8)]
-        self.buck1: List[ChannelMetrics] = [ChannelMetrics() for _ in range(2)]
-        self.buck2: List[ChannelMetrics] = [ChannelMetrics() for _ in range(2)]
-        self.bms: List[float] = [0.0] * 12
-        self.source_id = 42
+        self.id = 16
 
-    def register(self, board_id):
+        self._valid_attr_ids = {a.value for a in AttrID}
+        self._valid_cmd_ids = {CommandID.REQUESTDP, CommandID.ESTOP}
+
+        self.boards = {}
+        for board in BoardID:
+            if board == BoardID.BMS:
+                self.boards[board] = [0.0] * board.max_channels
+            else:
+                self.boards[board] = [
+                    ChannelMetrics() for _ in range(board.max_channels)
+                ]
+
+    # --- PUBLIC APIS ---
+    def register(self, arbitration_id: int):
         self.can.subscribe(
-            board_id, lambda data, b_id=board_id: self.handle_can_message(b_id, data)
+            arbitration_id, lambda data: self.handle_can_message(arbitration_id, data)
         )
 
     def register_all(self):
-        for b_id in BoardID:
-            self.register(
-                ((0xFF & 0x1F) << 6) | b_id
-            )  # source board id, destination all can
+        """Registers a """
+        for board in BoardID:
+            arb_id = self._build_arbitration_id(self.id, board)
+            self.register(arb_id)
 
     def handle_can_message(self, msg_id: int, data: bytes):
-        destination_id, source_id = self.convert_arbitration_id(msg_id)
-        command_id = (data[0] >> 4) & 0x0F
-        attribute_id = data[0] & 0x0F
-        channel_id = (data[1] >> 4) & 0x0F
+        dest_id, src_id, cmd_id, stream_id, channel_id = (
+            self._parse_can_msg(msg_id, data)
+        )
 
-        # self.logger.info(f"destination_id: {destination_id}")
-        # self.logger.info(f"command_id: {command_id}")
-        # self.logger.info(f"channel_id: {channel_id}")
-        # self.logger.info(f"attribute_id: {attribute_id}")
-        if command_id != CommandID.BROADCAST:
-            return  # Not broadcast command
+        is_valid_msg = self._validate_msg(
+            dest_id, src_id, cmd_id, stream_id, channel_id, len(data)
+        )
+
+        if not is_valid_msg:
+            return
+        
+        board = BoardID(src_id) 
+        board_data = self._get_board(board)
 
         value = struct.unpack_from("<f", data, 2)[0]
-        board = self.get_board(source_id)
-        attribute = self.get_attribute(attribute_id)
 
-        if board is None:
-            return  # Not correct board
+        stream_name = self._get_stream(stream_id)
 
-        if source_id == BoardID.BMS:  # BMS
-            if channel_id < len(self.bms):
-                self.bms[channel_id] = value
+        if src_id == BoardID.BMS:  # BMS
+            self.boards[BoardID.BMS][stream_id] = value
         else:  # Channel Metrics
-            if channel_id < len(board) and attribute:
-                setattr(board[channel_id], attribute, value)
-
-    # Helper functions
-    def get_board(
-        self, board_id: int
-    ) -> Optional[Union[List[ChannelMetrics], List[float]]]:
-        board_map = {
-            BoardID.SWITCH: self.switch,
-            BoardID.BUCK1: self.buck1,
-            BoardID.BUCK2: self.buck2,
-            BoardID.BMS: self.bms,
-        }
-
-        board = board_map.get(board_id)
-
-        return board
-
-    @staticmethod
-    def get_attribute(attribute_id: int) -> str:
-        attribute_map = {
-            AttributeID.CURRENT: "current",
-            AttributeID.VOLTAGE: "voltage",
-            AttributeID.POWER: "power",
-            AttributeID.TEMP: "temp",
-        }
-
-        attribute_name = attribute_map.get(attribute_id)
-
-        return attribute_name
-
-    @staticmethod
-    def convert_arbitration_id(arbitration_id: int) -> tuple[int, int]:
-        destination_id = (arbitration_id >> 6) & 0x3F
-        source_id = arbitration_id & 0x3F
-
-        return destination_id, source_id
+            setattr(board_data[channel_id], stream_name, value)
 
     def get_snapshot(self):
-        return {
-            "switch": [dataclasses.asdict(m) for m in self.switch],
-            "buck1": [dataclasses.asdict(m) for m in self.buck1],
-            "buck2": [dataclasses.asdict(m) for m in self.buck2],
-            "bms": self.bms,
+        snapshot = {}
+        for board_id, data in self.boards.items():
+            key = board_id.name.lower()
+
+            if board_id == BoardID.BMS:
+                snapshot[key] = data
+            else:
+                snapshot[key] = [dataclasses.asdict(m) for m in data]
+        return snapshot
+
+    async def request_pdb_data(self):
+        for board in BoardID:
+            await self.request_board_data(board)
+
+
+    async def request_board_data(self, board_id: Union[int, BoardID]):
+        board = BoardID(board_id) # cast just in case
+
+        for channel_idx in range(board.max_channels):
+            await self.request_channel_data(board, channel_idx)
+            await asyncio.sleep(0.005)
+
+    async def request_channel_data(
+        self, board_id: Union[int, BoardID], channel_id: int
+    ):
+        board = BoardID(board_id)
+        if board == BoardID.BMS:
+            await self._send_data_request(board.value, stream_id=channel_id)
+        else:
+            for attr in AttrID:
+                await self._send_data_request(
+                    board.value, stream_id=attr.value, channel_id=channel_id
+                )
+
+    async def toggle_channel(
+        self, board_id: Union[int, BoardID], channel: int, enable: bool
+    ):
+        can_id = self._build_arbitration_id(board_id, self.id)
+
+        byte0 = (CommandID.TOGGLE & 0x0F) << 4
+
+        toggle_state = 1 if enable else 0
+        byte1 = ((channel & 0x0F) << 4) | ((toggle_state & 0x01) << 3)
+
+        data = bytearray(8)
+        data[0] = byte0
+        data[1] = byte1
+
+        await self.can.send(can_id, bytes(data))
+
+    async def estop(self, board_id: Union[int, BoardID]):
+        can_id = self._build_arbitration_id(board_id, self.id)
+
+        data = bytearray(8)
+        await self.can.send(can_id, bytes(data))
+    # --- Internal functions ---
+    # --- PARSING MSG
+    @staticmethod
+    def _parse_arbitration_id(arbitration_id: int) -> tuple[int, int]:
+        dest_id = (arbitration_id >> 6) & 0x3F
+        src_id = arbitration_id & 0x3F
+
+        return dest_id, src_id
+    
+    def _parse_can_msg(
+        self, msg_id: int, data: bytes
+    ) -> tuple[int, int, int, int, int]:
+        dest_id, src_id = self._parse_arbitration_id(msg_id)
+        cmd_id = (data[0] >> 4) & 0x0F
+        stream_id = data[0] & 0x0F
+        channel_id = (data[1] >> 4) & 0x0F
+        return dest_id, src_id, cmd_id, stream_id, channel_id
+
+
+    # --- GETTERS
+    def _get_board(self, board_id: BoardID) -> Union[List[ChannelMetrics], List[float]]:
+        return self.boards.get(board_id, [])
+
+    @staticmethod
+    def _get_stream(stream_id: int) -> str:
+        stream_map = {
+            AttrID.CURRENT.value: "current",
+            AttrID.VOLTAGE.value: "voltage",
+            AttrID.POWER.value: "power",
+            AttrID.TEMP.value: "temp",
         }
+        return stream_map.get(stream_id, "")
+    
 
-    async def toggle_channel(self, board_id: int, channel: int, enable: bool):
-        can_id = ((board_id & 0x3F) << 6) | (self.source_id & 0x3F)
+    # --- MISC HELPERS
+    @staticmethod
+    def _build_arbitration_id(dest_id: int, src_id: int) -> int:
+        return ((dest_id & 0x3F) << 6) | (src_id & 0x3F)
+    
+    
+    def _validate_msg(
+        self, dest_id: int, src_id: int, cmd_id: int, stream_id: int, channel_id: int, data_len: int
+    ) -> bool:
+        # Check valid ids
+        if dest_id != (self.id & 0x1F) or src_id not in BoardID:
+            return False
+        
+        if cmd_id not in self._valid_cmd_ids:
+            return False
 
-        byte0 = ((CommandID.TOGGLE & 0x0F) << 4) | 0x0
+        if data_len < 8:
+            return False
+        
+        board = BoardID(src_id)
+        
+        if src_id == BoardID.BMS:
+            return 0 <= stream_id < board.max_channels
+            
+        stream_name = self._get_stream(stream_id)
+        if not stream_name:
+            return False
+        
+        board_list = self.boards.get(board)
+        if not board_list and hasattr(self.boards[board][0], stream_name):
+            if self.logger:
+                self.logger.error(
+                    f"Validation Error: {stream_name} not in ChannelMetrics"
+                )
+            return False
 
-        toggleState = 1 if enable else 0
-        byte1 = ((channel & 0x0F) << 4) | (
-            (toggleState & 0x01) << 3
-        )  # Channel (4 bits), Toggle State
+        return 0 <= channel_id < board.max_channels
+    
+    # --- SEND COMMANDS
+    async def _send_data_request(
+        self, board_id: int, stream_id: int, channel_id: int = 0
+    ):
+        can_id = self._build_arbitration_id(board_id, self.id)
 
-        data = bytes([byte0, byte1, 0, 0, 0, 0, 0, 0])
+        byte0 = ((CommandID.REQUESTDP & 0x0F) << 4) | (stream_id & 0x0F)
+        byte1 = (channel_id & 0x0F) << 4
 
-        await self.can.send(can_id, data)
+        data = bytearray(8)
+        data[0] = byte0
+        data[1] = byte1
+
+        await self.can.send(can_id, bytes(data))

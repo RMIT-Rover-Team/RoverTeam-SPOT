@@ -46,7 +46,7 @@
 #     try:
 #         arb_id = (0x06 << 6) | 0x01  # Board 0x06 (Buck1), Source 0x01 -> Arb ID 0x181
 #         print(arb_id)
-#         byte0 = 0x72  # Command 7, Attribute 2 (power)
+#         byte0 = 0x72  # Command 7, Attr 2 (power)
 #         # byte1 = 0x00  # Channel 0
 #         power_value = 45.75
 

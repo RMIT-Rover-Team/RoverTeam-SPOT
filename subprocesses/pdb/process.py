@@ -56,13 +56,30 @@ async def pdb_telemetry_loop(pdb: PDBManager, interval: float):
             # Get the data
             data = pdb.get_snapshot()
             msg = json.dumps({"type": "pdb_data", "data": data})
-            # logger.info("attempting to send!")
-            # logger.info(f"{msg}")
+
             print(f"JSON {msg}")  # send data over to pdb
             await asyncio.sleep(interval)
     except Exception as e:
         logger.error(f"Sending PDB Telemetry Data ran into an error: {e}")
         request_shutdown()  # request shutdown to restart
+
+async def pdb_request_loop(pdb: PDBManager, interval: float = 1.0):
+    try:
+        logger.info(f"PDB: Starting sequenced polling (step: {interval}s)")
+
+        while not shutdown_event.is_set():
+            for board in BoardID:
+                await pdb.request_board_data(board)
+                await asyncio.sleep(interval)
+
+                if shutdown_event.is_set():
+                    break
+
+    except asyncio.CancelledError:
+        pass
+    except Exception as e:
+        logger.error(f"Sequenced Polling Loop error: {e}")
+        request_shutdown()
 
 
 @app.get("/ping")
@@ -110,7 +127,11 @@ async def toggle_buck2(channel: int, enable: int):
     await pdb.toggle_channel(BoardID.BUCK2, channel, is_on)
     return {"message": "Buck 2 updated"}
 
-
+@app.post("/bms/estop")
+async def estop_bms():
+    await pdb.estop(BoardID.BMS)
+    await pdb.estop(BoardID.BMS)
+    await pdb.estop(BoardID.BMS)
 # -------------------------
 # CLEAN SHUTDOWN
 # -------------------------
@@ -153,15 +174,17 @@ async def main(
     server_task = asyncio.create_task(server.serve())
 
     heartbeat_task = asyncio.create_task(heartbeat_loop(heartbeat_interval))
-    pdb_task = asyncio.create_task(pdb_telemetry_loop(pdb, interval=1))
+    # pdb_telemetry_task = asyncio.create_task(pdb_telemetry_loop(pdb, interval=1))
+    # pdb_polling_task = asyncio.create_task(pdb_request_loop(pdb, interval=1))
 
     # Wait for shutdown...
     await shutdown_event.wait()
 
     # Cleanup
     await server_task
-    pdb_task.cancel()
     heartbeat_task.cancel()
+    # pdb_telemetry_task.cancel()
+    # pdb_polling_task.cancel()
 
     await asyncio.sleep(0)
     await can_client.close()
