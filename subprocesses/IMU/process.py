@@ -49,7 +49,7 @@ async def heartbeat_loop(interval: float):
         await asyncio.sleep(interval)
 
 # -------------------------
-# Extra Tasks
+# Await Can Data locally from IMU
 # -------------------------
 async def awaitCANData():
     global IMU_DATA_MATRIX
@@ -74,9 +74,20 @@ async def awaitCANData():
 
             IMU_DATA_MATRIX[Row][Col] = nextDP[1]
 
-            print("Recv",Row,Col,nextDP[1])
+            #print("Recv",Row,Col,nextDP[1])
 
-        await asyncio.sleep(0.1)
+        await asyncio.sleep(0.05)
+
+# -------------------------
+# Publish IMU to frontend
+# -------------------------
+async def publishIMU():
+    while True:
+        msg = json.dumps({"type": "imu_data", "data": IMU_DATA_MATRIX})
+        
+        print(f"JSON {msg}")  # send data over to pdb
+        await asyncio.sleep(0.5)
+
 
 # -------------------------
 # MAIN
@@ -93,7 +104,8 @@ async def main(heartbeat_interval: float, sub_url: str):
     heartbeat_task = asyncio.create_task(heartbeat_loop(heartbeat_interval))
 
     # Extra tasks
-    webrtc_task = asyncio.create_task(awaitCANData())
+    imucan_task = asyncio.create_task(awaitCANData())
+    imufwd_task = asyncio.create_task(publishIMU())
 
     try:
         await asyncio.gather(
@@ -102,7 +114,8 @@ async def main(heartbeat_interval: float, sub_url: str):
             heartbeat_task,
             
             # Extra tasks
-            webrtc_task
+            imucan_task,
+            imufwd_task
         )
     except asyncio.CancelledError:
         logging.info("Shutdown received, cancelling tasks")
