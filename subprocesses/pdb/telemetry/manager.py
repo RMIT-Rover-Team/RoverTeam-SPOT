@@ -10,7 +10,7 @@ from av import stream
 
 from sharedlib.canbus.client import CANClient
 
-from ....sharedlib.payloadControl import pyRover
+from sharedlib.payloadControl import pyRover
 from ..models import AttrID, BoardID, ChannelMetrics, CommandID, TelemetryState
 
 # imu 4
