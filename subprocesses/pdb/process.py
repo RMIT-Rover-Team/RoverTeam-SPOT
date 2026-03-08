@@ -12,7 +12,7 @@ from fastapi.responses import PlainTextResponse
 from sharedlib.canbus.client import CANClient
 from subprocesses.pdb.telemetry.manager import PDBManager
 
-from ....sharedlib.payloadControl import pyRover
+from sharedlib.payloadControl import pyRover
 from .models import BoardID
 
 
