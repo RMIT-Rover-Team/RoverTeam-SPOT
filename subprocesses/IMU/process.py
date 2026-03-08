@@ -86,7 +86,7 @@ async def publishIMU():
         msg = json.dumps({"type": "imu_data", "data": IMU_DATA_MATRIX})
         
         print(f"JSON {msg}")  # send data over to pdb
-        await asyncio.sleep(0.5)
+        await asyncio.sleep(0.1)
 
 
 # -------------------------
