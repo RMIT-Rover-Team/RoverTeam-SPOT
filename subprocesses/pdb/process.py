@@ -8,12 +8,11 @@ import uvicorn
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import PlainTextResponse
+from models import BoardID
 
 from sharedlib.canbus.client import CANClient
-from subprocesses.pdb.telemetry.manager import PDBManager
-
 from sharedlib.payloadControl import pyRover
-from models import BoardID
+from subprocesses.pdb.telemetry.manager import PDBManager
 
 
 # logger.log(25, msg) (SUCCESS)
@@ -42,6 +41,7 @@ app.add_middleware(
 pdb: PDBManager | None = None
 shutdown_event = asyncio.Event()
 
+polling_intervals = {"websocket": 1.0, "can": 1.0}
 
 async def heartbeat_loop(interval: float):
     """
@@ -56,26 +56,28 @@ async def heartbeat_loop(interval: float):
 # -------------------------
 # PDB Loops
 # -------------------------
-async def pdb_telemetry_loop(pdb: PDBManager, interval: float = 1.0) ->  None:
+async def pdb_websocket_loop(pdb: PDBManager, interval: float = 1.0) -> None:
     """
     Takes the state of PDBManager and sends it through the telemetry websocket. The topic of the pdb_telemetry_loop is pdb_data.
         pdb -- The PDB manager that receives, sends and stores pdb data
         interval -- interval in seconds
     """
     try:
+        polling_intervals["websocket"] = interval
         while not shutdown_event.is_set():
             # Get the data
-            data = pdb.get_snapshot()
-            msg = json.dumps({"type": "pdb_data", "data": data})
+            data = pdb.get_pending_data()
+            if data:
+                msg = json.dumps({"type": "pdb_data", "data": data})
+                print(f"JSON {msg}")  # send data over to pdb
 
-            print(f"JSON {msg}")  # send data over to pdb
-            await asyncio.sleep(interval)
+            await asyncio.sleep(polling_intervals["websocket"])
     except Exception as e:
         logger.error(f"Sending PDB Telemetry Data ran into an error: {e}")
         request_shutdown()  # request shutdown to restart
 
 
-async def pdb_request_loop(pdb: PDBManager, interval: float = 1.0) -> None:
+async def pdb_can_loop(pdb: PDBManager, interval: float = 1.0) -> None:
     """
     Sends a request for PDB data from pdb manager to update it.
         pdb -- The PDB manager that receives, sends and stores pdb data
@@ -83,15 +85,15 @@ async def pdb_request_loop(pdb: PDBManager, interval: float = 1.0) -> None:
     """
     try:
         logger.info(f"PDB: Starting sequenced polling (step: {interval}s)")
-
+        polling_intervals["can"] = interval
         while not shutdown_event.is_set():
             for board in BoardID:
                 await pdb.request_board_data(board)
-                await asyncio.sleep(interval)
+                await asyncio.sleep(polling_intervals["can"])
 
+                logger.info(f"Can interval {polling_intervals['can']}")
                 if shutdown_event.is_set():
                     break
-
     except asyncio.CancelledError:
         pass
     except Exception as e:
@@ -155,6 +157,32 @@ async def estop_bms():
     await pdb.estop(BoardID.BMS)
 
 
+@app.post("/can/polling/{interval}")
+async def change_can_interval(interval: float):
+    # Validation
+    if interval < 0:
+        raise HTTPException(status_code=400, detail="Interval must be greater than 0")
+
+    polling_intervals["can"] = interval
+
+    logger.info(f"Changed can interval to {polling_intervals['can']}")
+
+    return {"message": f"CAN polling rate set to {interval}"}
+
+
+@app.post("/websocket/polling/{interval}")
+async def change_websocket_interval(interval: float):
+    # Validation
+    if interval < 0:
+        raise HTTPException(status_code=400, detail="Interval must be greater than 0")
+
+    polling_intervals["websocket"] = interval
+
+    logger.info(f"Changed can interval to {polling_intervals['websocket']}")
+
+    return {"message": f"Websocket polling rate set to {interval}"}
+
+
 # -------------------------
 # CLEAN SHUTDOWN
 # -------------------------
@@ -198,9 +226,16 @@ async def main(
     server = uvicorn.Server(config)
     server_task = asyncio.create_task(server.serve())
 
+    global polling_intervals
+    polling_intervals = {"websocket": 1.0, "can": 1.0}
+
     heartbeat_task = asyncio.create_task(heartbeat_loop(heartbeat_interval))
-    pdb_telemetry_task = asyncio.create_task(pdb_telemetry_loop(pdb, interval=1))
-    pdb_polling_task = asyncio.create_task(pdb_request_loop(pdb, interval=1))
+    pdb_websocket_task = asyncio.create_task(
+        pdb_websocket_loop(pdb, interval=polling_intervals["websocket"])
+    )
+    pdb_can_task = asyncio.create_task(
+        pdb_can_loop(pdb, interval=polling_intervals["can"])
+    )
 
     # Wait for shutdown...
     await shutdown_event.wait()
@@ -208,8 +243,8 @@ async def main(
     # Cleanup
     await server_task
     heartbeat_task.cancel()
-    pdb_telemetry_task.cancel()
-    pdb_polling_task.cancel()
+    pdb_websocket_task.cancel()
+    pdb_can_task.cancel()
 
     await asyncio.sleep(0)
     await can_client.close()

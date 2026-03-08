@@ -43,8 +43,8 @@ def test_handle_switch_voltage(manager):
     manager.handle_can_message(msg_id, bytes(data))
 
     # 5. Assert
-    assert manager.boards[BoardID.SWITCH].metric_data[5].voltage == pytest.approx(12.5)
-    assert manager.boards[BoardID.SWITCH].metric_data[5].current == 0.0  # Ensure other fields aren't touched
+    assert manager.boards[BoardID.SWITCH][5].metric_data.voltage == pytest.approx(12.5)
+    assert manager.boards[BoardID.SWITCH][5].metric_data.current == 0.0  # Ensure other fields aren't touched
 
 
 def test_handle_bms_list(manager):
@@ -59,7 +59,7 @@ def test_handle_bms_list(manager):
 
     manager.handle_can_message(msg_id, bytes(data))
 
-    assert manager.boards[BoardID.BMS].metric_data[11] == pytest.approx(3.99)
+    assert manager.boards[BoardID.BMS][11].metric_data == pytest.approx(3.99)
 
 
 def test_malformed_data_safety(manager):

@@ -1,7 +1,8 @@
 from dataclasses import asdict, dataclass
 from enum import Enum, IntEnum
 import datetime
-from typing import Optional, Union
+from typing import Union
+import dataclasses
 
 
 class MasterID(IntEnum):
@@ -72,6 +73,8 @@ class ChannelMetrics:
 
 @dataclass
 class TelemetryState:
-    metric_data: Union[list[ChannelMetrics], list[float]]
-    last_updated: datetime.datetime
+    metric_data: Union[ChannelMetrics, float]
+    last_updated: datetime.datetime = dataclasses.field(
+        default_factory=datetime.datetime.now
+    )
     pending_send: bool = False
