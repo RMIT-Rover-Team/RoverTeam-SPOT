@@ -5,11 +5,15 @@ import pytest
 from subprocesses.pdb.telemetry.manager import PDBManager
 from subprocesses.pdb.models import BoardID
 
+from sharedlib.payloadControl import pyRover
+
+
 @pytest.fixture
 def manager():
     # Mock the can_client so we don't need a real bus for logic tests
     mock_can = MagicMock()
-    return PDBManager(mock_can)
+    mock_master = pyRover("can0", 16)
+    return PDBManager(mock_can, mock_master)
 
 
 def test_id_conversion(manager):

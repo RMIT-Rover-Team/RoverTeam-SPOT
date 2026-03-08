@@ -3,16 +3,28 @@ import dataclasses
 import datetime
 import logging
 import struct
+from re import S
 from typing import List, Optional, Union
+
+from av import stream
 
 from sharedlib.canbus.client import CANClient
 
+from ....sharedlib.payloadControl import pyRover
 from ..models import AttrID, BoardID, ChannelMetrics, CommandID, TelemetryState
 
+# imu 4
 
 class PDBManager:
-    def __init__(self, can_client: CANClient, logger: Optional[logging.Logger] = None):
+    def __init__(
+        self,
+        can_client: CANClient,
+        payload_master: pyRover,
+        logger: Optional[logging.Logger] = None,
+    ):
         self.can = can_client
+        self.payload_master = payload_master
+
         self.logger = logger
         self.id = 16
 
@@ -98,24 +110,32 @@ class PDBManager:
     async def toggle_channel(
         self, board_id: Union[int, BoardID], channel: int, enable: bool
     ):
-        can_id = self._build_arbitration_id(board_id, self.id)
+        # OLD CANBUS LOGIC. HERE JUST IN CASE THE FIRMWARE SHITS THE BED
+        # can_id = self._build_arbitration_id(board_id, self.id)
 
-        byte0 = (CommandID.TOGGLE & 0x0F) << 4
+        # byte0 = (CommandID.TOGGLE & 0x0F) << 4
 
-        toggle_state = 1 if enable else 0
-        byte1 = ((channel & 0x0F) << 4) | ((toggle_state & 0x01) << 3)
+        # toggle_state = 1 if enable else 0
+        # byte1 = ((channel & 0x0F) << 4) | ((toggle_state & 0x01) << 3)
 
-        data = bytearray(8)
-        data[0] = byte0
-        data[1] = byte1
+        # data = bytearray(8)
+        # data[0] = byte0
+        # data[1] = byte1
 
-        await self.can.send(can_id, bytes(data))
+        # await self.can.send(can_id, bytes(data))
+        toggle_state_result = await self.payload_master.ToggleState(
+            board_id, channel, enable
+        )
+
+        # toggle_state_result["error_flag"]
 
     async def estop(self, board_id: Union[int, BoardID]):
-        can_id = self._build_arbitration_id(board_id, self.id)
+        # can_id = self._build_arbitration_id(board_id, self.id)
 
-        data = bytearray(8)
-        await self.can.send(can_id, bytes(data))
+        # data = bytearray(8)
+        # await self.can.send(can_id, bytes(data))
+
+        estop_result = await self.payload_master.estop(0)
 
     # --- Internal functions ---
     # --- PARSING MSG

@@ -12,6 +12,7 @@ from fastapi.responses import PlainTextResponse
 from sharedlib.canbus.client import CANClient
 from subprocesses.pdb.telemetry.manager import PDBManager
 
+from ....sharedlib.payloadControl import pyRover
 from .models import BoardID
 
 
@@ -184,7 +185,9 @@ async def main(
     can_client = CANClient()
     await can_client.start()
 
-    pdb = PDBManager(can_client, logger)
+    pdb_master = pyRover.PyRover("can0", 16)
+
+    pdb = PDBManager(can_client, pdb_master, logger)
     pdb.register_all()
 
     # -------------------------
