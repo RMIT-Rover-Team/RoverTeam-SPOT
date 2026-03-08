@@ -13,7 +13,7 @@ from sharedlib.canbus.client import CANClient
 from subprocesses.pdb.telemetry.manager import PDBManager
 
 from sharedlib.payloadControl import pyRover
-from .models import BoardID
+from models import BoardID
 
 
 # logger.log(25, msg) (SUCCESS)
