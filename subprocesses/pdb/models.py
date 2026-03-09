@@ -48,6 +48,7 @@ class AttrID(IntEnum):
 
 class CommandID(IntEnum):
     ESTOP = 0x00
+    SETPOSITION = 0x02
     TOGGLE = 0x04
     BROADCASTDP = 0x07
     REQUESTDP = 0x08

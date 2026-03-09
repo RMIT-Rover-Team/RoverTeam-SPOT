@@ -1,12 +1,9 @@
 import asyncio
-import dataclasses
 import datetime
 import logging
 import struct
 from dataclasses import asdict
 from typing import List, Optional, Union
-
-from av import stream
 
 from sharedlib.canbus.client import CANClient
 from sharedlib.payloadControl import pyRover
@@ -155,6 +152,11 @@ class PDBManager:
         )
 
         # toggle_state_result["error_flag"]
+
+    async def cut_power(
+        self, cell_id: int
+    ):
+        cut_power_result = await self.payload_master.SetMotorPosition(cell_id, 0, 0)
 
 
     async def estop(self, board_id: Union[int, BoardID]):

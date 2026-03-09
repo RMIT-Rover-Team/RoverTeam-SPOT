@@ -38,7 +38,7 @@ app.add_middleware(
     allow_headers=["*"],  # Allows all headers
 )
 
-pdb: PDBManager | None = None
+pdb: PDBManager
 shutdown_event = asyncio.Event()
 
 polling_intervals = {"websocket": 1.0, "can": 1.0}
@@ -152,9 +152,9 @@ async def toggle_buck2(channel: int, enable: int):
 
 @app.post("/bms/estop")
 async def estop_bms():
-    await pdb.estop(BoardID.BMS)
-    await pdb.estop(BoardID.BMS)
-    await pdb.estop(BoardID.BMS)
+    await pdb.cut_power(1)
+    await pdb.cut_power(2)
+    await pdb.cut_power(3)
 
 
 @app.post("/can/polling/{interval}")
