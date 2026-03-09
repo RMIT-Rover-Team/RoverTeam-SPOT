@@ -15,7 +15,7 @@ imuMaster = pyRover.PyRover("can0",1)
 # Row 1:
 IMU_DATA_MATRIX = {
     "gyro":{"p":0, "y":0, "r":0},
-    "vel":{"x":0,"y":0,"z":0}
+    "vel":{"fd":0,"up":0,"lr":0}
 }
 
 
@@ -57,7 +57,7 @@ async def awaitCANData():
     RowLookup = {0:"gyro", 1:"vel"}
     ColLookup = {
         "gyro":["p","y","r"],
-        "vel":["x","y","z"]
+        "vel":["fd","up","lr"]
     }
 
     while True:
