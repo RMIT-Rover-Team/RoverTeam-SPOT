@@ -8,8 +8,8 @@ import uvicorn
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import PlainTextResponse
+from models import BoardID
 
-from sharedlib.models import PDBBoardID
 from sharedlib.canbus.client import CANClient
 from sharedlib.payloadControl import pyRover
 from subprocesses.pdb.telemetry.manager import PDBManager
@@ -87,10 +87,11 @@ async def pdb_can_loop(pdb: PDBManager, interval: float = 1.0) -> None:
         logger.info(f"PDB: Starting sequenced polling (step: {interval}s)")
         polling_intervals["can"] = interval
         while not shutdown_event.is_set():
-            for board in PDBBoardID:
+            for board in BoardID:
                 await pdb.request_board_data(board)
                 await asyncio.sleep(polling_intervals["can"])
 
+                logger.info(f"Can interval {polling_intervals['can']}")
                 if shutdown_event.is_set():
                     break
     except asyncio.CancelledError:
@@ -118,7 +119,7 @@ async def toggle_switch(channel: int, enable: int):
 
     is_on = True if enable == 1 else False
 
-    await pdb.toggle_channel(PDBBoardID.SWITCH, channel, is_on)
+    await pdb.toggle_channel(BoardID.SWITCH, channel, is_on)
 
     logger.info(f"COMMAND: Switch Board | Channel: {channel} | State: {is_on}")
 
@@ -134,7 +135,7 @@ async def toggle_buck1(channel: int, enable: int):
 
     is_on = True if enable == 1 else False
 
-    await pdb.toggle_channel(PDBBoardID.BUCK1, channel, is_on)
+    await pdb.toggle_channel(BoardID.BUCK1, channel, is_on)
     return {"message": f"Buck 1 channel {'enabled' if enable else 'disabled'}"}
 
 
@@ -145,7 +146,7 @@ async def toggle_buck2(channel: int, enable: int):
 
     is_on = True if enable == 1 else False
 
-    await pdb.toggle_channel(PDBBoardID.BUCK2, channel, is_on)
+    await pdb.toggle_channel(BoardID.BUCK2, channel, is_on)
     return {"message": "Buck 2 updated"}
 
 
@@ -212,7 +213,7 @@ async def main(
     can_client = CANClient()
     await can_client.start()
 
-    pdb_master = pyRover.PyRover("vcan0", 16)
+    pdb_master = pyRover.PyRover("can0", 16)
 
     pdb = PDBManager(can_client, pdb_master, logger)
     pdb.register_all()

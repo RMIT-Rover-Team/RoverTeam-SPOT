@@ -8,46 +8,43 @@ from typing import List, Optional, Union
 from sharedlib.canbus.client import CANClient
 from sharedlib.payloadControl import pyRover
 
-from sharedlib.models import PDBStreamID, PDBBoardID, ChannelMetrics, CommandID, TelemetryState
-
+# from models import
 # imu 4
 
-class PDBManager:
+
+class ScienceManager:
     def __init__(
         self,
         can_client: CANClient,
-        pdb_master: pyRover,
+        payload_master: pyRover,
         logger: Optional[logging.Logger] = None,
     ):
         self.can = can_client
-        self.pdb_master = pdb_master
+        self.payload_master = payload_master
 
         self.logger = logger
-        self.id = 16
+        self.id = 12
 
-        self._valid_attr_ids = {a.value for a in PDBStreamID}
+        self._valid_attr_ids = {a.value for a in AttrID}
         self._valid_cmd_ids = {CommandID.REQUESTDP, CommandID.ESTOP}
 
-        self.boards: dict[PDBBoardID, List[TelemetryState]] = {}
-        for board in PDBBoardID:
+        self.boards: dict[BoardID, List[TelemetryState]] = {}
+        for board in BoardID:
             self.boards[board] = []
             for _ in range(board.max_channels):
-                initial_data = 0.0 if board == PDBBoardID.BMS else ChannelMetrics()
+                initial_data = 0.0 if board == BoardID.BMS else ChannelMetrics()
                 self.boards[board].append(TelemetryState(metric_data=initial_data))
-             
-                
+
     # --- PUBLIC APIS ---
     def register(self, arbitration_id: int):
         self.can.subscribe(
             arbitration_id, lambda data: self.handle_can_message(arbitration_id, data)
         )
 
-
     def register_all(self):
-        for board in PDBBoardID:
+        for board in BoardID:
             arb_id = self._build_arbitration_id(self.id, board)
             self.register(arb_id)
-
 
     def handle_can_message(self, msg_id: int, data: bytes):
         dest_id, src_id, cmd_id, stream_id, channel_id = self._parse_can_msg(
@@ -61,14 +58,14 @@ class PDBManager:
         if not is_valid_msg:
             return
 
-        board_enum = PDBBoardID(src_id)
+        board_enum = BoardID(src_id)
         state = self.boards[board_enum]
 
         value = struct.unpack_from("<f", data, 2)[0]
 
         stream_name = self._get_stream(stream_id)
 
-        if src_id == PDBBoardID.BMS:  # BMS
+        if src_id == BoardID.BMS:  # BMS
             state[stream_id].metric_data = value
         else:  # Channel Metrics
             stream_name = self._get_stream(stream_id)
@@ -76,11 +73,10 @@ class PDBManager:
             state[stream_id].pending_send = True
             if stream_name:
                 target_channel = state[channel_id].metric_data
-                
+
                 setattr(target_channel, stream_name, value)
                 state[channel_id].last_updated = datetime.datetime.now()
                 state[channel_id].pending_send = True
-
 
     def get_pending_data(self) -> dict:
         pending_data_list = {}
@@ -93,46 +89,47 @@ class PDBManager:
                         if state.pending_send:
                             if board_key not in pending_data_list:
                                 pending_data_list[board_key] = {}
-                            
+
                             # Convert Dataclass to Dict and Enum to String
                             if isinstance(state.metric_data, ChannelMetrics):
-                                pending_data_list[board_key][channel_idx] = asdict(state.metric_data)
+                                pending_data_list[board_key][channel_idx] = asdict(
+                                    state.metric_data
+                                )
                             else:
                                 # For BMS which is just a float
-                                pending_data_list[board_key][channel_idx] = state.metric_data
-                            
-                            state.pending_send = False # Reset flag
+                                pending_data_list[board_key][channel_idx] = (
+                                    state.metric_data
+                                )
+
+                            state.pending_send = False  # Reset flag
 
         return pending_data_list
 
     async def request_pdb_data(self):
-        for board in PDBBoardID:
+        for board in BoardID:
             await self.request_board_data(board)
 
-
-    async def request_board_data(self, board_id: Union[int, PDBBoardID]):
-        board = PDBBoardID(board_id)  # cast just in case
+    async def request_board_data(self, board_id: Union[int, BoardID]):
+        board = BoardID(board_id)  # cast just in case
 
         for channel_idx in range(board.max_channels):
             await self.request_channel_data(board, channel_idx)
             await asyncio.sleep(0.005)
 
-
     async def request_channel_data(
-        self, board_id: Union[int, PDBBoardID], channel_id: int
+        self, board_id: Union[int, BoardID], channel_id: int
     ):
-        board = PDBBoardID(board_id)
-        if board == PDBBoardID.BMS:
+        board = BoardID(board_id)
+        if board == BoardID.BMS:
             await self._send_data_request(board.value, stream_id=channel_id)
         else:
-            for attr in PDBStreamID:
+            for attr in AttrID:
                 await self._send_data_request(
                     board.value, stream_id=attr.value, channel_id=channel_id
                 )
 
-
     async def toggle_channel(
-        self, board_id: Union[int, PDBBoardID], channel: int, enable: bool
+        self, board_id: Union[int, BoardID], channel: int, enable: bool
     ):
         # OLD CANBUS LOGIC. HERE JUST IN CASE THE FIRMWARE SHITS THE BED
         # can_id = self._build_arbitration_id(board_id, self.id)
@@ -153,20 +150,16 @@ class PDBManager:
 
         # toggle_state_result["error_flag"]
 
-    async def cut_power(
-        self, cell_id: int
-    ):
+    async def cut_power(self, cell_id: int):
         cut_power_result = await self.payload_master.SetMotorPosition(cell_id, 0, 0)
 
-
-    async def estop(self, board_id: Union[int, PDBBoardID]):
+    async def estop(self, board_id: Union[int, BoardID]):
         # can_id = self._build_arbitration_id(board_id, self.id)
 
         # data = bytearray(8)
         # await self.can.send(can_id, bytes(data))
 
         estop_result = await self.payload_master.estop(0)
-
 
     # --- Internal functions ---
     # --- PARSING MSG
@@ -186,23 +179,20 @@ class PDBManager:
         channel_id = (data[1] >> 4) & 0x0F
         return dest_id, src_id, cmd_id, stream_id, channel_id
 
-
     @staticmethod
     def _get_stream(stream_id: int) -> str:
         stream_map = {
-            PDBStreamID.CURRENT.value: "current",
-            PDBStreamID.VOLTAGE.value: "voltage",
-            PDBStreamID.POWER.value: "power",
-            PDBStreamID.TEMP.value: "temp",
+            AttrID.CURRENT.value: "current",
+            AttrID.VOLTAGE.value: "voltage",
+            AttrID.POWER.value: "power",
+            AttrID.TEMP.value: "temp",
         }
         return stream_map.get(stream_id, "")
-
 
     # --- MISC HELPERS
     @staticmethod
     def _build_arbitration_id(dest_id: int, src_id: int) -> int:
         return ((dest_id & 0x3F) << 6) | (src_id & 0x3F)
-
 
     def _validate_msg(
         self,
@@ -214,7 +204,7 @@ class PDBManager:
         data_len: int,
     ) -> bool:
         # Check valid ids
-        if dest_id != (self.id & 0x1F) or src_id not in [b_id for b_id in PDBBoardID]:
+        if dest_id != (self.id & 0x1F) or src_id not in [b_id for b_id in BoardID]:
             return False
 
         if cmd_id not in self._valid_cmd_ids:
@@ -223,9 +213,9 @@ class PDBManager:
         if data_len < 8:
             return False
 
-        board = PDBBoardID(src_id)
+        board = BoardID(src_id)
 
-        if src_id == PDBBoardID.BMS:
+        if src_id == BoardID.BMS:
             return 0 <= stream_id < board.max_channels
 
         stream_name = self._get_stream(stream_id)
@@ -236,7 +226,6 @@ class PDBManager:
             return False
 
         return 0 <= channel_id < board.max_channels
-
 
     # --- SEND COMMANDS
     async def _send_data_request(

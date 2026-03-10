@@ -3,7 +3,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from subprocesses.pdb.telemetry.manager import PDBManager
-from subprocesses.pdb.models import BoardID
+from sharedlib.models import BoardID
 
 @pytest.fixture
 def manager():

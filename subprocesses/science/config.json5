@@ -1,0 +1,11 @@
+{
+    // Subprocess name
+    "name": "science",
+    "priority": 20,
+    "args": {
+        "--ws_host": "0.0.0.0",
+        "--ws_port": "5000",
+        "--ws_name": "pdb_telemetry",
+        "--status_interval": "0.05"
+    }
+}

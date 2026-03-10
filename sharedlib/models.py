@@ -5,12 +5,7 @@ from typing import Union
 import dataclasses
 
 
-class MasterID(IntEnum):
-    EQUINOX_1 = 0x1
-    EQUINOX_2 = 0x2
-
-
-class BoardID(IntEnum):
+class PDBBoardID(IntEnum):
     SWITCH = 0xA
     BUCK1 = 0x06
     BUCK2 = 0x07
@@ -21,25 +16,25 @@ class BoardID(IntEnum):
         """Returns the number of channels/cells allowed for this board."""
         return BOARD_LIMITS[self]
 
-class ChannelLength(IntEnum):
+class PDBChannelLength(IntEnum):
     SWITCH = 8
     BUCK1 = 2
     BUCK2 = 2
 
 
-class CellLength(IntEnum):
+class PDBCellLength(IntEnum):
     BMS = 12
 
 
 BOARD_LIMITS = {
-    BoardID.SWITCH: ChannelLength.SWITCH,
-    BoardID.BUCK1: ChannelLength.BUCK1,
-    BoardID.BUCK2: ChannelLength.BUCK2,
-    BoardID.BMS: CellLength.BMS,
+    PDBBoardID.SWITCH: PDBChannelLength.SWITCH,
+    PDBBoardID.BUCK1: PDBChannelLength.BUCK1,
+    PDBBoardID.BUCK2: PDBChannelLength.BUCK2,
+    PDBBoardID.BMS: PDBCellLength.BMS,
 }
 
 
-class AttrID(IntEnum):
+class PDBStreamID(IntEnum):
     CURRENT = 0
     VOLTAGE = 1
     POWER = 2
