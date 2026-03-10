@@ -5,6 +5,7 @@ import struct
 from dataclasses import asdict
 from typing import List, Optional, Union
 
+from sharedlib.models import BoardID, CommandID
 from sharedlib.canbus.client import CANClient
 from sharedlib.payloadControl import pyRover
 
@@ -25,27 +26,24 @@ class ScienceManager:
         self.logger = logger
         self.id = 12
 
-        self._valid_attr_ids = {a.value for a in AttrID}
-        self._valid_cmd_ids = {CommandID.REQUESTDP, CommandID.ESTOP}
+        self.target_pos = -1
+        self.current_pos = -1
 
-        self.boards: dict[BoardID, List[TelemetryState]] = {}
-        for board in BoardID:
-            self.boards[board] = []
-            for _ in range(board.max_channels):
-                initial_data = 0.0 if board == BoardID.BMS else ChannelMetrics()
-                self.boards[board].append(TelemetryState(metric_data=initial_data))
+        self.temp_state = {
+            "peltier": False,
+            "heatpad": False,
+        }
+
+        # validation
+        self._valid_cmd_ids = {
+            CommandID.ESTOP,
+            CommandID.TOGGLE, 
+            CommandID.SETSPEED,
+            CommandID.GETSPEED,
+        }
+
 
     # --- PUBLIC APIS ---
-    def register(self, arbitration_id: int):
-        self.can.subscribe(
-            arbitration_id, lambda data: self.handle_can_message(arbitration_id, data)
-        )
-
-    def register_all(self):
-        for board in BoardID:
-            arb_id = self._build_arbitration_id(self.id, board)
-            self.register(arb_id)
-
     def handle_can_message(self, msg_id: int, data: bytes):
         dest_id, src_id, cmd_id, stream_id, channel_id = self._parse_can_msg(
             msg_id, data
@@ -58,25 +56,25 @@ class ScienceManager:
         if not is_valid_msg:
             return
 
-        board_enum = BoardID(src_id)
-        state = self.boards[board_enum]
+        # board_enum = BoardID(src_id)
+        # state = self.boards[board_enum]
 
-        value = struct.unpack_from("<f", data, 2)[0]
+        # value = struct.unpack_from("<f", data, 2)[0]
 
-        stream_name = self._get_stream(stream_id)
+        # stream_name = self._get_stream(stream_id)
 
-        if src_id == BoardID.BMS:  # BMS
-            state[stream_id].metric_data = value
-        else:  # Channel Metrics
-            stream_name = self._get_stream(stream_id)
-            state[stream_id].last_updated = datetime.datetime.now()
-            state[stream_id].pending_send = True
-            if stream_name:
-                target_channel = state[channel_id].metric_data
+        # if src_id == BoardID.BMS:  # BMS
+        #     state[stream_id].metric_data = value
+        # else:  # Channel Metrics
+        #     stream_name = self._get_stream(stream_id)
+        #     state[stream_id].last_updated = datetime.datetime.now()
+        #     state[stream_id].pending_send = True
+        #     if stream_name:
+        #         target_channel = state[channel_id].metric_data
 
-                setattr(target_channel, stream_name, value)
-                state[channel_id].last_updated = datetime.datetime.now()
-                state[channel_id].pending_send = True
+        #         setattr(target_channel, stream_name, value)
+        #         state[channel_id].last_updated = datetime.datetime.now()
+        #         state[channel_id].pending_send = True
 
     def get_pending_data(self) -> dict:
         pending_data_list = {}
@@ -204,7 +202,7 @@ class ScienceManager:
         data_len: int,
     ) -> bool:
         # Check valid ids
-        if dest_id != (self.id & 0x1F) or src_id not in [b_id for b_id in BoardID]:
+        if dest_id != (self.id & 0x1F) or src_id != BoardID.SCIENCE:
             return False
 
         if cmd_id not in self._valid_cmd_ids:
@@ -213,19 +211,19 @@ class ScienceManager:
         if data_len < 8:
             return False
 
-        board = BoardID(src_id)
+        # board = BoardID(src_id)
 
-        if src_id == BoardID.BMS:
-            return 0 <= stream_id < board.max_channels
+        # if src_id == BoardID.BMS:
+        #     return 0 <= stream_id < board.max_channels
 
-        stream_name = self._get_stream(stream_id)
-        if not stream_name:
-            return False
+        # stream_name = self._get_stream(stream_id)
+        # if not stream_name:
+        #     return False
 
-        if board not in self.boards:
-            return False
+        # if board not in self.boards:
+        #     return False
 
-        return 0 <= channel_id < board.max_channels
+        # return 0 <= channel_id < board.max_channels
 
     # --- SEND COMMANDS
     async def _send_data_request(

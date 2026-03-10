@@ -8,9 +8,9 @@ import uvicorn
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import PlainTextResponse
-from models import BoardID
 
 from sharedlib.canbus.client import CANClient
+from sharedlib.models import BoardID
 from sharedlib.payloadControl import pyRover
 from subprocesses.pdb.telemetry.manager import PDBManager
 
