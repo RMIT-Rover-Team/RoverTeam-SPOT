@@ -91,7 +91,7 @@ async def main(
         ]
     else:
         actuators = [
-            ("J1", DummyActuator("J1")),
+            ("J1", ODriveActuator("J1", 0x14)),
             ("J2", MyActuator("J2", 0x141)),
             ("J3", MyActuator("J3", 0x142)),
             ("J4", ODriveActuator("J4", 0x15)),
