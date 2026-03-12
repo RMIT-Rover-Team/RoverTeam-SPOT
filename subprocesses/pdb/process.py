@@ -156,7 +156,7 @@ async def estop_bms():
     await pdb.cut_power(3)
 
 
-@app.post("/can/polling/{interval}")
+@app.post("/pdb/can/polling/{interval}")
 async def change_can_interval(interval: float):
     # Validation
     if interval < 0:
@@ -169,7 +169,7 @@ async def change_can_interval(interval: float):
     return {"message": f"CAN polling rate set to {interval}"}
 
 
-@app.post("/websocket/polling/{interval}")
+@app.post("/pdb/websocket/polling/{interval}")
 async def change_websocket_interval(interval: float):
     # Validation
     if interval < 0:
