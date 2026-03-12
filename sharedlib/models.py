@@ -12,6 +12,14 @@ class BoardID(IntEnum):
     BUCK2 = 0x07
     BMS = 0x08
 
+class ScienceID(IntEnum):
+    DRILL = 0
+    AUGER = 1
+    MICROSCOPE = 2
+    MICROSCOPE_SWIVEL = 3
+    HEATER = 4
+    PELTIER = 5
+
 class PDBID(IntEnum):
     SWITCH = BoardID.SWITCH
     BUCK1 = BoardID.BUCK1
