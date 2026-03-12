@@ -9,13 +9,10 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import PlainTextResponse
 
-from sharedlib.canbus.client import CANClient
-from sharedlib.models import BoardID, ScienceID
+from sharedlib.models import ScienceID
 from sharedlib.payloadControl import pyRover
 from subprocesses.science.manager import ScienceManager
 
-
-# logger.log(25, msg) (SUCCESS)
 # -------------------------
 # CONFIG
 # -------------------------
@@ -43,6 +40,7 @@ shutdown_event = asyncio.Event()
 
 polling_intervals = {"websocket": 1.0, "can": 1.0}
 
+
 async def heartbeat_loop(interval: float):
     """
     Sends a heartbeat to the main supervisor to say the subprocess is alive.
@@ -56,7 +54,9 @@ async def heartbeat_loop(interval: float):
 # -------------------------
 # Science Loops
 # -------------------------
-async def science_websocket_loop(science: ScienceManager, interval: float = 1.0) -> None:
+async def science_websocket_loop(
+    science: ScienceManager, interval: float = 1.0
+) -> None:
     """
     Takes the state of science manager and sends it through the telemetry websocket. The topic of the science_telemetry_loop is science_data.
         science -- The science manager that receives, sends and stores pdb data
@@ -112,9 +112,11 @@ async def ping():
     """
     return PlainTextResponse("science")
 
+
 @app.post("/science/estop")
 async def estop():
     await science.estop()
+
 
 @app.post("/drill/speed/{speed}")
 async def set_drill_speed(speed: int):
@@ -129,9 +131,10 @@ async def set_drill_speed(speed: int):
 async def set_stepper_steps(motor_id: int, steps: int):
     if motor_id > 3 or motor_id == 0:
         raise HTTPException(status_code=400, detail="Motor id is invalid")
-    
+
     await science.set_stepper_steps(motor_id, steps)
     return {"message": f"Set motor {motor_id} to step {steps} times."}
+
 
 @app.post("/science/can/polling/{interval}")
 async def change_can_interval(interval: float):

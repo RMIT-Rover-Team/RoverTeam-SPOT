@@ -2,13 +2,10 @@ import asyncio
 import datetime
 import logging
 import struct
-from dataclasses import field, asdict
-from typing import List, Optional, Union
-
-from dataclasses import dataclass, field, asdict
+from dataclasses import asdict, dataclass, field
+from typing import Optional
 
 from sharedlib.models import BoardID, CommandID, ScienceID
-from sharedlib.canbus.client import CANClient
 from sharedlib.payloadControl import pyRover
 
 # from models import
