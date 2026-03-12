@@ -2,11 +2,10 @@ import asyncio
 import datetime
 import logging
 import struct
-from dataclasses import field
+from dataclasses import field, asdict
 from typing import List, Optional, Union
 
-from attr import dataclass
-from click import Command
+from dataclasses import dataclass, field, asdict
 
 from sharedlib.models import BoardID, CommandID, ScienceID
 from sharedlib.canbus.client import CANClient
@@ -19,15 +18,19 @@ from sharedlib.payloadControl import pyRover
 @dataclass()
 class ScienceTelemetry:
     drill: int = 0
-    stepper_motors: dict[int, int] = {
-        ScienceID.AUGER: 0,
-        ScienceID.MICROSCOPE: 0,
-        ScienceID.MICROSCOPE_SWIVEL: 0
-    }
-    temp_state: dict[int, bool] = {
-        ScienceID.HEATER: False,
-        ScienceID.PELTIER: False
-    }
+    stepper_motors: dict[int, int] = field(
+        default_factory=lambda: {
+            ScienceID.AUGER: 0,
+            ScienceID.MICROSCOPE: 0,
+            ScienceID.MICROSCOPE_SWIVEL: 0,
+        }
+    )
+    temp_state: dict[int, bool] = field(
+        default_factory=lambda: {
+            ScienceID.HEATER: False,
+            ScienceID.PELTIER: False
+        }
+    )
 
 
 
@@ -42,7 +45,7 @@ class ScienceManager:
         self.logger = logger
         self.id = 12
 
-        self.telemetry: ScienceTelemetry
+        self.telemetry = ScienceTelemetry()
 
         # validation
         self._valid_cmd_ids = {
@@ -54,6 +57,9 @@ class ScienceManager:
 
 
     # --- PUBLIC APIS ---
+    def get_telemetry_data(self):
+        return asdict(self.telemetry)
+
     async def estop(self):
         await self.payload_master.estop(BoardID.SCIENCE)
 
@@ -80,19 +86,20 @@ class ScienceManager:
         await self.payload_master.SetMotorSpeed(BoardID.SCIENCE, motor_id, float(speed))
         self.telemetry.stepper_motors[motor_id] = int(speed)
 
-    async def get_drill_speed(self) -> int:
-        (errors, speed) = await self.payload_master.GetMotorSpeed(BoardID.SCIENCE, 0)
+    async def refresh_drill_telemetry(self):
+        _, speed = await self.payload_master.GetMotorSpeed(BoardID.SCIENCE, 0)
         self.telemetry.drill = speed
 
+    async def refresh_stepper_telemetry(self, motor_id: int):
+        if motor_id > 3 or motor_id == 0:
+            return -1
+        _, speed = await self.payload_master.GetMotorSpeed(BoardID.SCIENCE, motor_id)
+        self.telemetry.stepper_motors[motor_id] = int(speed)
+        
+    async def get_drill_speed(self) -> int:
         return self.telemetry.drill
 
     async def get_stepper_steps(self, motor_id: int) -> int:
-        if motor_id > 3 or motor_id == 0:
-            return -1
-
-        (errors, speed) = await self.payload_master.GetMotorSpeed(BoardID.SCIENCE, motor_id)
-        self.telemetry.stepper_motors[motor_id] = int(speed)
-
         return self.telemetry.stepper_motors[motor_id]
 
     # --- Internal functions ---

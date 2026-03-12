@@ -10,7 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import PlainTextResponse
 
 from sharedlib.canbus.client import CANClient
-from sharedlib.models import BoardID
+from sharedlib.models import BoardID, ScienceID
 from sharedlib.payloadControl import pyRover
 from subprocesses.science.manager import ScienceManager
 
@@ -56,49 +56,53 @@ async def heartbeat_loop(interval: float):
 # -------------------------
 # Science Loops
 # -------------------------
-# async def pdb_websocket_loop(science: ScienceManager, interval: float = 1.0) -> None:
-#     """
-#     Takes the state of PDBManager and sends it through the telemetry websocket. The topic of the pdb_telemetry_loop is pdb_data.
-#         pdb -- The PDB manager that receives, sends and stores pdb data
-#         interval -- interval in seconds
-#     """
-#     try:
-#         polling_intervals["websocket"] = interval
-#         while not shutdown_event.is_set():
-#             # Get the data
-#             data = pdb.get_pending_data()
-#             if data:
-#                 msg = json.dumps({"type": "pdb_data", "data": data})
-#                 print(f"JSON {msg}")  # send data over to pdb
+async def science_websocket_loop(science: ScienceManager, interval: float = 1.0) -> None:
+    """
+    Takes the state of science manager and sends it through the telemetry websocket. The topic of the science_telemetry_loop is science_data.
+        science -- The science manager that receives, sends and stores pdb data
+        interval -- interval in seconds
+    """
+    try:
+        polling_intervals["websocket"] = interval
+        while not shutdown_event.is_set():
+            # Get the data
+            data = science.get_telemetry_data()
+            if data:
+                msg = json.dumps({"type": "science_data", "data": data})
+                print(f"JSON {msg}")  # send data over to pdb
 
-#             await asyncio.sleep(polling_intervals["websocket"])
-#     except Exception as e:
-#         logger.error(f"Sending PDB Telemetry Data ran into an error: {e}")
-#         request_shutdown()  # request shutdown to restart
+            await asyncio.sleep(polling_intervals["websocket"])
+    except Exception as e:
+        logger.error(f"Sending PDB Telemetry Data ran into an error: {e}")
+        request_shutdown()  # request shutdown to restart
 
 
-# async def pdb_can_loop(science: ScienceManager, interval: float = 1.0) -> None:
-#     """
-#     Sends a request for PDB data from pdb manager to update it.
-#         pdb -- The PDB manager that receives, sends and stores pdb data
-#         interval -- interval in seconds
-#     """
-#     try:
-#         logger.info(f"PDB: Starting sequenced polling (step: {interval}s)")
-#         polling_intervals["can"] = interval
-#         while not shutdown_event.is_set():
-#             for board in BoardID:
-#                 await pdb.request_board_data(board)
-#                 await asyncio.sleep(polling_intervals["can"])
+async def science_can_loop(science: ScienceManager, interval: float = 1.0) -> None:
+    """
+    Sends a request for science data from science manager to update it.
+        science -- The science manager that receives, sends and stores pdb data
+        interval -- interval in seconds
+    """
+    try:
+        logger.info(f"PDB: Starting sequenced polling (step: {interval}s)")
+        polling_intervals["can"] = interval
+        while not shutdown_event.is_set():
+            await science.get_drill_speed()
+            await science.get_stepper_steps(ScienceID.AUGER)
+            await science.get_stepper_steps(ScienceID.MICROSCOPE)
+            await science.get_stepper_steps(ScienceID.MICROSCOPE_SWIVEL)
 
-#                 logger.info(f"Can interval {polling_intervals['can']}")
-#                 if shutdown_event.is_set():
-#                     break
-#     except asyncio.CancelledError:
-#         pass
-#     except Exception as e:
-#         logger.error(f"Sequenced Polling Loop error: {e}")
-#         request_shutdown()
+            await asyncio.sleep(polling_intervals["can"])
+
+            logger.info(f"Can interval {polling_intervals['can']}")
+            if shutdown_event.is_set():
+                break
+
+    except asyncio.CancelledError:
+        pass
+    except Exception as e:
+        logger.error(f"Sequenced Polling Loop error: {e}")
+        request_shutdown()
 
 
 @app.get("/ping")
@@ -129,7 +133,7 @@ async def set_stepper_steps(motor_id: int, steps: int):
     await science.set_stepper_steps(motor_id, steps)
     return {"message": f"Set motor {motor_id} to step {steps} times."}
 
-@app.post("/can/polling/{interval}")
+@app.post("/science/can/polling/{interval}")
 async def change_can_interval(interval: float):
     # Validation
     if interval < 0:
@@ -142,7 +146,7 @@ async def change_can_interval(interval: float):
     return {"message": f"CAN polling rate set to {interval}"}
 
 
-@app.post("/websocket/polling/{interval}")
+@app.post("/science/websocket/polling/{interval}")
 async def change_websocket_interval(interval: float):
     # Validation
     if interval < 0:
@@ -182,7 +186,7 @@ async def main(
     # -------------------------
     # CAN setup
     # -------------------------
-    science_master = pyRover.PyRover("can0", 12)
+    science_master = pyRover.PyRover("vcan0", 12)
     science = ScienceManager(science_master, logger)
 
     # -------------------------
@@ -197,11 +201,11 @@ async def main(
     polling_intervals = {"websocket": 1.0, "can": 1.0}
 
     heartbeat_task = asyncio.create_task(heartbeat_loop(heartbeat_interval))
-    pdb_websocket_task = asyncio.create_task(
-        pdb_websocket_loop(pdb, interval=polling_intervals["websocket"])
+    science_websocket_task = asyncio.create_task(
+        science_websocket_loop(science, interval=polling_intervals["websocket"])
     )
-    pdb_can_task = asyncio.create_task(
-        pdb_can_loop(pdb, interval=polling_intervals["can"])
+    science_can_task = asyncio.create_task(
+        science_can_loop(science, interval=polling_intervals["can"])
     )
 
     # Wait for shutdown...
@@ -210,17 +214,16 @@ async def main(
     # Cleanup
     await server_task
     heartbeat_task.cancel()
-    pdb_websocket_task.cancel()
-    pdb_can_task.cancel()
+    science_websocket_task.cancel()
+    science_can_task.cancel()
 
     await asyncio.sleep(0)
-    await can_client.close()
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--ws_host", type=str, default="0.0.0.0")
-    parser.add_argument("--ws_port", type=int, default=5000)
+    parser.add_argument("--ws_port", type=int, default=5003)
     parser.add_argument("--ws_name", type=str, default="pdb_telemetry")
     parser.add_argument("--status_interval", type=float, default=0.02)
     parser.add_argument("--heartbeat", type=float, default=2.0)
