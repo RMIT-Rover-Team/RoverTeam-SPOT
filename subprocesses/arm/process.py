@@ -126,7 +126,7 @@ async def main(
     can_client = CANClient()
     await can_client.start()
 
-    manager = ActuatorManager(can_client, rate_hz=20.0)
+    manager = ActuatorManager(can_client, rate_hz=10.0)
     for _, actuator in actuators:
         manager.register(actuator)
 
