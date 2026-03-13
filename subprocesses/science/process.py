@@ -83,26 +83,22 @@ async def science_can_loop(science: ScienceManager, interval: float = 1.0) -> No
         science -- The science manager that receives, sends and stores pdb data
         interval -- interval in seconds
     """
-    try:
-        logger.info(f"PDB: Starting sequenced polling (step: {interval}s)")
-        polling_intervals["can"] = interval
-        while not shutdown_event.is_set():
-            await science.get_drill_speed()
-            await science.get_stepper_steps(ScienceID.AUGER)
-            await science.get_stepper_steps(ScienceID.MICROSCOPE)
-            await science.get_stepper_steps(ScienceID.MICROSCOPE_SWIVEL)
-
-            await asyncio.sleep(polling_intervals["can"])
-
-            logger.info(f"Can interval {polling_intervals['can']}")
-            if shutdown_event.is_set():
-                break
-
-    except asyncio.CancelledError:
-        pass
-    except Exception as e:
-        logger.error(f"Sequenced Polling Loop error: {e}")
-        request_shutdown()
+    stepper_ids = [ScienceID.AUGER, ScienceID.MICROSCOPE, ScienceID.MICROSCOPE_SWIVEL]
+    while not shutdown_event.is_set():
+        try:
+            await asyncio.wait_for(
+                asyncio.gather(
+                    science.refresh_drill_telemetry(),
+                    *[science.refresh_stepper_telemetry(s_id) for s_id in stepper_ids],
+                ),
+                timeout=2.5,
+            )
+            logger.info("PISS!")
+        except asyncio.CancelledError:
+            pass
+        except Exception as e:
+            logger.error(f"Sequenced Polling Loop error: {e}")
+            request_shutdown()
 
 
 @app.get("/ping")
@@ -122,8 +118,7 @@ async def estop():
 async def set_drill_speed(speed: int):
     await science.set_drill_speed(speed)
 
-    logger.info(f"COMMAND: Science | Speed: {speed}")
-
+    logger.info(f"COMMAND: Science Drill speed | Speed: {speed}")
     return {"message": f"Set drill speed to {speed}"}
 
 
@@ -180,7 +175,7 @@ async def main(
     status_interval: float,
     heartbeat_interval: float,
 ):
-    global pdb
+    global science
 
     loop = asyncio.get_running_loop()
     loop.add_signal_handler(signal.SIGINT, request_shutdown)
@@ -213,9 +208,10 @@ async def main(
 
     # Wait for shutdown...
     await shutdown_event.wait()
+    await server_task
+
 
     # Cleanup
-    await server_task
     heartbeat_task.cancel()
     science_websocket_task.cancel()
     science_can_task.cancel()
@@ -227,7 +223,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--ws_host", type=str, default="0.0.0.0")
     parser.add_argument("--ws_port", type=int, default=5003)
-    parser.add_argument("--ws_name", type=str, default="pdb_telemetry")
+    parser.add_argument("--ws_name", type=str, default="science_telemetry")
     parser.add_argument("--status_interval", type=float, default=0.02)
     parser.add_argument("--heartbeat", type=float, default=2.0)
 

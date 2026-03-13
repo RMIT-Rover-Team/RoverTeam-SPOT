@@ -2,7 +2,7 @@ import struct
 from unittest.mock import MagicMock
 import pytest
 
-from subprocesses.pdb.telemetry.manager import PDBManager
+from subprocesses.pdb.manager import PDBManager
 from sharedlib.models import PDBID
 
 @pytest.fixture

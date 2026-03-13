@@ -58,7 +58,7 @@ class ScienceManager:
         return asdict(self.telemetry)
 
     async def estop(self):
-        await self.payload_master.estop(BoardID.SCIENCE)
+         await self.payload_master.estop(BoardID.SCIENCE)
 
     async def toggle_temp(
         self, motor_id: int, enable: bool
@@ -90,13 +90,15 @@ class ScienceManager:
     async def refresh_stepper_telemetry(self, motor_id: int):
         if motor_id > 3 or motor_id == 0:
             return -1
+
         _, speed = await self.payload_master.GetMotorSpeed(BoardID.SCIENCE, motor_id)
+        
         self.telemetry.stepper_motors[motor_id] = int(speed)
         
-    async def get_drill_speed(self) -> int:
+    def get_drill_speed(self) -> int:
         return self.telemetry.drill
 
-    async def get_stepper_steps(self, motor_id: int) -> int:
+    def get_stepper_steps(self, motor_id: int) -> int:
         return self.telemetry.stepper_motors[motor_id]
 
     # --- Internal functions ---
