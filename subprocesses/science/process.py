@@ -65,15 +65,16 @@ async def science_websocket_loop(
     try:
         polling_intervals["websocket"] = interval
         while not shutdown_event.is_set():
+            logger.info(f"data: {science.get_telemetry_data()}")
             # Get the data
             data = science.get_telemetry_data()
             if data:
                 msg = json.dumps({"type": "science_data", "data": data})
-                print(f"JSON {msg}")  # send data over to pdb
+                print(f"JSON {msg}")  # send data over to science
 
             await asyncio.sleep(polling_intervals["websocket"])
     except Exception as e:
-        logger.error(f"Sending PDB Telemetry Data ran into an error: {e}")
+        logger.error(f"Sending Science Telemetry Data ran into an error: {e}")
         request_shutdown()  # request shutdown to restart
 
 
@@ -84,21 +85,15 @@ async def science_can_loop(science: ScienceManager, interval: float = 1.0) -> No
         interval -- interval in seconds
     """
     stepper_ids = [ScienceID.AUGER, ScienceID.MICROSCOPE, ScienceID.MICROSCOPE_SWIVEL]
-    while not shutdown_event.is_set():
-        try:
-            await asyncio.wait_for(
-                asyncio.gather(
-                    science.refresh_drill_telemetry(),
-                    *[science.refresh_stepper_telemetry(s_id) for s_id in stepper_ids],
-                ),
-                timeout=2.5,
-            )
-            logger.info("PISS!")
-        except asyncio.CancelledError:
-            pass
-        except Exception as e:
-            logger.error(f"Sequenced Polling Loop error: {e}")
-            request_shutdown()
+    try:
+        while not shutdown_event.is_set():
+            await science.refresh_drill_telemetry()
+            [await science.refresh_stepper_telemetry(s_id) for s_id in stepper_ids]
+    
+            await asyncio.sleep(polling_intervals["can"])
+    except Exception as e:
+        logger.error(f"Sequenced Polling Loop error: {e}")
+        request_shutdown()
 
 
 @app.get("/ping")
@@ -111,7 +106,7 @@ async def ping():
 
 @app.post("/science/estop")
 async def estop():
-    await science.estop()
+    science.estop()
 
 
 @app.post("/drill/speed/{speed}")
@@ -196,7 +191,7 @@ async def main(
     server_task = asyncio.create_task(server.serve())
 
     global polling_intervals
-    polling_intervals = {"websocket": 1.0, "can": 1.0}
+    polling_intervals = {"websocket": 1.0, "can": 2.0}
 
     heartbeat_task = asyncio.create_task(heartbeat_loop(heartbeat_interval))
     science_websocket_task = asyncio.create_task(

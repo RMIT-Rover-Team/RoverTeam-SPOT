@@ -57,8 +57,8 @@ class ScienceManager:
     def get_telemetry_data(self):
         return asdict(self.telemetry)
 
-    async def estop(self):
-         await self.payload_master.estop(BoardID.SCIENCE)
+    def estop(self):
+         self.payload_master.estop(BoardID.SCIENCE)
 
     async def toggle_temp(
         self, motor_id: int, enable: bool
@@ -66,32 +66,36 @@ class ScienceManager:
         if motor_id != ScienceID.HEATER and motor_id != ScienceID.PELTIER:
             return
         
-        await self.payload_master.ToggleState(
+        self.payload_master.ToggleState(
             BoardID.SCIENCE, motor_id, enable
         )
 
         self.telemetry.temp_state[motor_id] = enable
 
     async def set_drill_speed(self, speed: int) -> None:
-        await self.payload_master.SetMotorSpeed(BoardID.SCIENCE, 0, float(speed))
+        self.payload_master.SetMotorSpeed(BoardID.SCIENCE, 0, float(speed))
+        self.logger.info(f"Set drill speed to {int(speed)}")
         self.telemetry.drill = int(speed)
+        self.logger.info(f"Drill: {self.telemetry.drill}")
 
     async def set_stepper_steps(self, motor_id: int, speed: int) -> None:
         if motor_id > 3 or motor_id == 0:
             return
 
-        await self.payload_master.SetMotorSpeed(BoardID.SCIENCE, motor_id, float(speed))
+        self.payload_master.SetMotorSpeed(BoardID.SCIENCE, motor_id, float(speed))
+        self.logger.info(f"Set motor {motor_id} steps to {int(speed)}")
         self.telemetry.stepper_motors[motor_id] = int(speed)
+        self.logger.info(f"Motor {motor_id}: {self.telemetry.stepper_motors[motor_id]}")
 
     async def refresh_drill_telemetry(self):
-        _, speed = await self.payload_master.GetMotorSpeed(BoardID.SCIENCE, 0)
+        _, speed = self.payload_master.GetMotorSpeed(BoardID.SCIENCE, ScienceID.DRILL)
         self.telemetry.drill = speed
 
     async def refresh_stepper_telemetry(self, motor_id: int):
         if motor_id > 3 or motor_id == 0:
             return -1
 
-        _, speed = await self.payload_master.GetMotorSpeed(BoardID.SCIENCE, motor_id)
+        _, speed = self.payload_master.GetMotorSpeed(BoardID.SCIENCE, motor_id)
         
         self.telemetry.stepper_motors[motor_id] = int(speed)
         

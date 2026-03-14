@@ -147,7 +147,7 @@ class PDBManager:
         # data[1] = byte1
 
         # await self.can.send(can_id, bytes(data))
-        toggle_state_result = await self.payload_master.ToggleState(
+        toggle_state_result = await self.pdb_master.ToggleState(
             board_id, channel, enable
         )
 
@@ -156,7 +156,7 @@ class PDBManager:
     async def cut_power(
         self, cell_id: int
     ):
-        cut_power_result = await self.payload_master.SetMotorPosition(cell_id, 0, 0)
+        cut_power_result = await self.pdb_master.SetMotorPosition(cell_id, 0, 0)
 
 
     async def estop(self, board_id: Union[int, PDBID]):
@@ -165,7 +165,7 @@ class PDBManager:
         # data = bytearray(8)
         # await self.can.send(can_id, bytes(data))
 
-        estop_result = await self.payload_master.estop(0)
+        estop_result = await self.pdb_master.estop(0)
 
 
     # --- Internal functions ---
