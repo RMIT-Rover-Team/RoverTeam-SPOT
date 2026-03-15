@@ -89,7 +89,7 @@ class ScienceManager:
 
     async def refresh_drill_telemetry(self):
         _, speed = self.payload_master.GetMotorSpeed(BoardID.SCIENCE, ScienceID.DRILL)
-        self.telemetry.drill = speed
+        self.telemetry.drill = int(speed)
 
     async def refresh_stepper_telemetry(self, motor_id: int):
         if motor_id > 3 or motor_id == 0:

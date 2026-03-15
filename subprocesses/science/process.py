@@ -83,6 +83,7 @@ async def science_can_loop(science: ScienceManager, interval: float = 1.0) -> No
         science -- The science manager that receives, sends and stores pdb data
         interval -- interval in seconds
     """
+    await asyncio.sleep(0.1)
     stepper_ids = [ScienceID.AUGER, ScienceID.MICROSCOPE, ScienceID.MICROSCOPE_SWIVEL]
     try:
         while not shutdown_event.is_set():
@@ -185,7 +186,7 @@ async def main(
     # -------------------------
     # CAN setup
     # -------------------------
-    science_master = pyRover.PyRover("vcan0", 12)
+    science_master = pyRover.PyRover("can0", 12)
     science = ScienceManager(science_master, logger)
 
     # -------------------------
