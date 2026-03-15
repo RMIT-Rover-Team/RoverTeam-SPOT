@@ -16,6 +16,12 @@ from canbus.ODrive import ODrive
 #For driving the wheels, we use the abstracted layer for torque / stability control
 #The correct binary is automatically selected by python for the architecture
 import driveStackBinaries.torque as torque
+
+#The status indicator
+import sharedlib.utilities.StatusIndicator as Status
+
+#
+
 #For debug output:
 #import driveStackBinaries.debugVersions.torque as torque
 

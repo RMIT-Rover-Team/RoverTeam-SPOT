@@ -1,7 +1,7 @@
 from sharedlib.payloadControl import pyRover
 
-IMU_ID = 0x2
-imuMaster = pyRover.PyRover("can0",1)
+IMU_ID = 0x5
+imuMaster = pyRover.PyRover("can0",0)
 
 
 class LEDCOLOUR:
