@@ -186,7 +186,7 @@ async def main(
     # -------------------------
     # CAN setup
     # -------------------------
-    science_master = pyRover.PyRover("can0", 12)
+    science_master = pyRover.PyRover("can0", 0)
     science = ScienceManager(science_master, logger)
 
     # -------------------------
