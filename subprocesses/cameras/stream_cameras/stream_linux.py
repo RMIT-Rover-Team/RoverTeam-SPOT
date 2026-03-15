@@ -1,5 +1,6 @@
 import os
 import asyncio
+from aiortc import VideoStreamTrack, MediaStreamError
 import logging
 import subprocess
 import time
@@ -32,6 +33,8 @@ class V4L2CameraTrack(VideoStreamTrack):
 
         self.WIDTH = width
         self.HEIGHT = height
+
+        self._open_device()
 
         if not os.path.exists(self.device):
             raise RuntimeError(f"{self.device} not found")
