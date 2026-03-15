@@ -29,7 +29,7 @@ logger.addHandler(JsonHandler())
 # -------------------------
 # IMU STATE
 # -------------------------
-IMU_ID = 0x2
+IMU_ID = 0x5
 
 IMU_DATA_MATRIX = {
     "gyro": {"p": 0, "y": 0, "r": 0},
