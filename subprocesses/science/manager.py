@@ -74,18 +74,18 @@ class ScienceManager:
 
     async def set_drill_speed(self, speed: int) -> None:
         self.payload_master.SetMotorSpeed(BoardID.SCIENCE, 0, float(speed))
-        self.logger.info(f"Set drill speed to {int(speed)}")
         self.telemetry.drill = int(speed)
-        self.logger.info(f"Drill: {self.telemetry.drill}")
 
     async def set_stepper_steps(self, motor_id: int, speed: int) -> None:
         if motor_id > 3 or motor_id == 0:
             return
 
         self.payload_master.SetMotorSpeed(BoardID.SCIENCE, motor_id, float(speed))
-        self.logger.info(f"Set motor {motor_id} steps to {int(speed)}")
         self.telemetry.stepper_motors[motor_id] = int(speed)
-        self.logger.info(f"Motor {motor_id}: {self.telemetry.stepper_motors[motor_id]}")
+
+    async def set_heatpad_toggle(self, toggle: bool):
+        toggle_bit = 1 if toggle else 0
+        self.payload_master.ToggleState(BoardID.SCIENCE, ScienceID.HEATER, toggle_bit)
 
     async def refresh_drill_telemetry(self):
         _, speed = self.payload_master.GetMotorSpeed(BoardID.SCIENCE, ScienceID.DRILL)
@@ -93,7 +93,7 @@ class ScienceManager:
 
     async def refresh_stepper_telemetry(self, motor_id: int):
         if motor_id > 3 or motor_id == 0:
-            return -1
+            return
 
         _, speed = self.payload_master.GetMotorSpeed(BoardID.SCIENCE, motor_id)
         

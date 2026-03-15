@@ -65,7 +65,6 @@ async def science_websocket_loop(
     try:
         polling_intervals["websocket"] = interval
         while not shutdown_event.is_set():
-            logger.info(f"data: {science.get_telemetry_data()}")
             # Get the data
             data = science.get_telemetry_data()
             if data:
@@ -125,6 +124,13 @@ async def set_stepper_steps(motor_id: int, steps: int):
     await science.set_stepper_steps(motor_id, steps)
     return {"message": f"Set motor {motor_id} to step {steps} times."}
 
+
+@app.post("/heatpad/{toggle}")
+async def set_heatpad_toggle(toggle: int):
+    heatpad_status = True if toggle == 1 else False
+
+    
+    await science.set_heatpad_toggle(heatpad_status)
 
 @app.post("/science/can/polling/{interval}")
 async def change_can_interval(interval: float):
