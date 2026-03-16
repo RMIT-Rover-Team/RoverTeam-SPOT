@@ -78,7 +78,7 @@ async def control_loop(
         drive_l *= drive_multiplier
         drive_r *= drive_multiplier
 
-        torqueController.set_speed()
+        torqueController.set_speed(drive_l, drive_r)
 
         if drive_mode == 0:
             # Locked differential
