@@ -84,18 +84,17 @@ async def control_loop(
 
         if drive_mode == 0:
             # Locked differential
-            torqueController.set_mode(torque.LOCKED_VELOCITY)
             
-
+            
+            pass
         elif drive_mode == 1:
             # Unlocked differential
-            torqueController.set_mode(torque.UNLOCKED_VELOCITY)
 
-
+            pass
         elif drive_mode == 2:
             # Direct torque mode (dangerous!)
-            torqueController.set_mode(torque.UNLOCKED_TORQUE)
-
+            
+            pass
         else:
             logger.warning(f"Unknown drive_mode: {drive_mode}")
 
@@ -112,8 +111,18 @@ async def heartbeat_loop(shutdown_event, interval):
         await asyncio.sleep(interval)
 
 
-async def make_drive_mode_event(control_socket, mode: int, commanded_inputs: dict):
+async def make_drive_mode_event(torqueController, control_socket, mode: int, commanded_inputs: dict):
     commanded_inputs["drive_mode"] = mode
+
+    modeMap = [
+        torque.LOCKED_VELOCITY,
+        torque.UNLOCKED_VELOCITY,
+        torque.UNLOCKED_TORQUE
+    ]
+
+    logger.warning(f"SWITCHED TO MODE: {mode}")
+
+    torqueController.set_mode(modeMap[mode])
     await control_socket.outputs.update_output("drive_mode", mode)
 
 # -------------------------
@@ -187,7 +196,7 @@ async def main(
 
         async def callback(m=mode):
             # Make sure this is awaited
-            await make_drive_mode_event(control_socket, m, commanded_inputs)
+            await make_drive_mode_event(torqueController, control_socket, m, commanded_inputs)
             return True  # signals "handled"
 
         control_socket.inputs.register_input(
