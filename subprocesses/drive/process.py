@@ -117,6 +117,8 @@ async def error_clear_event(torqueController):
     torqueController.enable()
 
 async def control_change(hasControl):
+    logger.warning("led state changed")
+
     if hasControl:
         Status.setLED(Status.LEDCOLOUR.MOTION)
     else:
