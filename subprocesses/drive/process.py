@@ -86,22 +86,6 @@ async def control_loop(
 
         torqueController.set_speed(drive_l, drive_r)
 
-        if drive_mode == 0:
-            # Locked differential
-            
-            
-            pass
-        elif drive_mode == 1:
-            # Unlocked differential
-
-            pass
-        elif drive_mode == 2:
-            # Direct torque mode (dangerous!)
-            
-            pass
-        else:
-            logger.warning(f"Unknown drive_mode: {drive_mode}")
-
         await asyncio.sleep(interval)
 
 
@@ -128,6 +112,9 @@ async def make_drive_mode_event(torqueController, control_socket, mode: int, com
 
     torqueController.set_mode(modeMap[mode])
     await control_socket.outputs.update_output("drive_mode", mode)
+
+async def error_clear_event(torqueController):
+    torqueController.enable()
 
 # -------------------------
 # MAIN
@@ -196,18 +183,17 @@ async def main(
     )
 
     for mode in range(3):
-        event_name = f"drive_mode_{mode}"
-
-        async def callback(m=mode):
-            # Make sure this is awaited
-            await make_drive_mode_event(torqueController, control_socket, m, commanded_inputs)
-            return True  # signals "handled"
-
         control_socket.inputs.register_input(
-            event_name,
+            f"drive_mode_{mode}",
             type_="event",
-            callback=callback,
+            callback=lambda m=mode: asyncio.create_task(make_drive_mode_event(torqueController, control_socket, m, commanded_inputs)) or asyncio.sleep(0) or True
         )
+
+    control_socket.inputs.register_input(
+        f"clear_errors",
+        type_="event",
+        callback=lambda m=mode: asyncio.create_task(error_clear_event(torqueController)) or asyncio.sleep(0) or True
+    )
 
     schema.register_axis(
         control_socket.inputs,
