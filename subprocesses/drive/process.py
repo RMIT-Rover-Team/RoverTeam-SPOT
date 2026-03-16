@@ -114,7 +114,7 @@ async def heartbeat_loop(shutdown_event, interval):
 
 async def make_drive_mode_event(control_socket, mode: int, commanded_inputs: dict):
     commanded_inputs["drive_mode"] = mode
-    control_socket.outputs.update_output("drive_mode", mode)
+    await control_socket.outputs.update_output("drive_mode", mode)
 
 # -------------------------
 # MAIN
