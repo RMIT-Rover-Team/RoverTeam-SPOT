@@ -9,6 +9,8 @@ from sharedlib.controlsocket import schema
 
 import driveStackBinaries.torque as torque
 
+import imu.imu as imu
+
 #The status indicator
 import sharedlib.utilities.StatusIndicator as Status
 
@@ -199,7 +201,18 @@ async def main(
     control_socket.outputs.register_output("drive_x")
     control_socket.outputs.register_output("drive_y")
 
+    control_socket.outputs.register_output("gyro_p")
+    control_socket.outputs.register_output("gyro_y")
+    control_socket.outputs.register_output("gyro_r")
+
+    control_socket.outputs.register_output("vel_fd")
+    control_socket.outputs.register_output("vel_up")
+    control_socket.outputs.register_output("vel_lr")
+
     await control_socket.start()
+    
+    imu_driver = imu.IMUDriver(control_socket)
+    await imu_driver.start()
 
     logger.info(f"Drive control running on ws://{ws_host}:{ws_port}")
 
@@ -238,6 +251,7 @@ async def main(
     await asyncio.gather(*tasks, return_exceptions=True)
 
     await control_socket.stop()
+    await imu_driver.stop()
 
     logger.info("Shutdown complete")
 
