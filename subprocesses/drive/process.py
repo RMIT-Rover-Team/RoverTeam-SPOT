@@ -84,6 +84,11 @@ async def control_loop(
         drive_l *= drive_multiplier
         drive_r *= drive_multiplier
 
+        if(drive_l==0 and drive_r==0):
+            Status.setLED(Status.LEDCOLOUR.LOCKED)
+        else:
+            Status.setLED(Status.LEDCOLOUR.MOTION)
+
         torqueController.set_speed(drive_l, drive_r)
 
         await asyncio.sleep(interval)
@@ -97,7 +102,7 @@ async def heartbeat_loop(shutdown_event, interval):
     while not shutdown_event.is_set():
         print("HEARTBEAT")
         await asyncio.sleep(interval)
-
+        
 
 async def make_drive_mode_event(torqueController, control_socket, mode: int, commanded_inputs: dict):
     commanded_inputs["drive_mode"] = mode
@@ -253,6 +258,8 @@ async def main(
     # -------------------------
 
     await shutdown_event.wait()
+
+    Status.setLED(Status.LEDCOLOUR.SAFE)
 
     logger.info("Shutting down tasks...")
 

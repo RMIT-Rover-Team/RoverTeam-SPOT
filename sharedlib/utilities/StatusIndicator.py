@@ -13,6 +13,5 @@ class LEDCOLOUR:
     CONFLICT = 5
     ERROR = 6
 
-
 def setLED(myColour: int):
     imuMaster.ToggleState(IMU_ID, myColour, 1)
