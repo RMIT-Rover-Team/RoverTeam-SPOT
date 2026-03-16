@@ -124,6 +124,10 @@ async def control_change(hasControl):
     else:
         Status.setLED(Status.LEDCOLOUR.LOCKED)
 
+def first_time_connected():
+    Status.setLED(Status.LEDCOLOUR.MOTION)
+    print("ControlSocket connected for the first time!")
+
 # -------------------------
 # MAIN
 # -------------------------
@@ -240,6 +244,7 @@ async def main(
 
     control_socket.outputs.register_output("drive_mode")
 
+    control_socket.on_connect(first_time_connected)
     await control_socket.start()
     
     imu_driver = imu.IMUDriver(control_socket)
