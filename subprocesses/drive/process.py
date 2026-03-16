@@ -75,6 +75,10 @@ async def control_loop(
         drive_mode = int(commanded_inputs["drive_mode"])
 
         drive_multiplier = commanded_inputs["drive_multiplier"]
+
+        if drive_mode == 2:
+            drive_multiplier = 0.1
+
         drive_l, drive_r = calc_drive(commanded_inputs["drive_x"], commanded_inputs["drive_y"])
 
         drive_l *= drive_multiplier
