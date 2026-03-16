@@ -84,11 +84,6 @@ async def control_loop(
         drive_l *= drive_multiplier
         drive_r *= drive_multiplier
 
-        if(drive_l==0 and drive_r==0):
-            Status.setLED(Status.LEDCOLOUR.LOCKED)
-        else:
-            Status.setLED(Status.LEDCOLOUR.MOTION)
-
         torqueController.set_speed(drive_l, drive_r)
 
         await asyncio.sleep(interval)
@@ -120,6 +115,12 @@ async def make_drive_mode_event(torqueController, control_socket, mode: int, com
 
 async def error_clear_event(torqueController):
     torqueController.enable()
+
+async def control_change(hasControl):
+    if hasControl:
+        Status.setLED(Status.LEDCOLOUR.MOTION)
+    else:
+        Status.setLED(Status.LEDCOLOUR.LOCKED)
 
 # -------------------------
 # MAIN
@@ -198,6 +199,18 @@ async def main(
         f"clear_errors",
         type_="event",
         callback=lambda m=mode: asyncio.create_task(error_clear_event(torqueController)) or asyncio.sleep(0) or True
+    )
+
+    control_socket.inputs.register_input(
+        f"control_take",
+        type_="event",
+        callback=lambda m=mode: asyncio.create_task(control_change(True)) or asyncio.sleep(0) or True
+    )
+
+    control_socket.inputs.register_input(
+        f"control_release",
+        type_="event",
+        callback=lambda m=mode: asyncio.create_task(control_change(False)) or asyncio.sleep(0) or True
     )
 
     schema.register_axis(
