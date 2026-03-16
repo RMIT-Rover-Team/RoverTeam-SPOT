@@ -115,8 +115,8 @@ async def make_drive_mode_event(torqueController, control_socket, mode: int, com
     commanded_inputs["drive_mode"] = mode
 
     modeMap = [
-        torque.LOCKED_VELOCITY,
         torque.UNLOCKED_VELOCITY,
+        torque.LOCKED_VELOCITY,
         torque.UNLOCKED_TORQUE
     ]
 
