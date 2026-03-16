@@ -72,7 +72,11 @@ async def control_loop(
 
         drive_mode = int(commanded_inputs["drive_mode"])
 
+        drive_multiplier = commanded_inputs["drive_multiplier"]
         drive_l, drive_r = calc_drive(commanded_inputs["drive_x"], commanded_inputs["drive_y"])
+
+        drive_l *= drive_multiplier
+        drive_r *= drive_multiplier
 
         torqueController.set_speed()
 
@@ -129,7 +133,8 @@ async def main(
     commanded_inputs = {
         "drive_x": 0.0,
         "drive_y": 0.0,
-        "drive_mode": 0
+        "drive_mode": 0,
+        "drive_multiplier": 200
     }
 
     # -------------------------
