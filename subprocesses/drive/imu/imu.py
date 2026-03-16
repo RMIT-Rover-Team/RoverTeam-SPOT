@@ -108,6 +108,6 @@ class IMUDriver:
         while True:
 
             for k, v in self.data.items():
-                self.control_socket.outputs.set_output(k, v)
+                self.control_socket.outputs.update_output(k, v)
 
             await asyncio.sleep(0.1)  # 10hz
