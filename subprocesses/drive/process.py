@@ -184,6 +184,14 @@ async def main(
         ),
     )
 
+    schema.register_axis(
+        control_socket.inputs,
+        "drive_multiplier",
+        callback=lambda v: asyncio.create_task(
+            make_input_callback("drive_multiplier", commanded_inputs)(v)
+        ),
+    )
+
     # -------------------------
     # REGISTER OUTPUTS
     # -------------------------
