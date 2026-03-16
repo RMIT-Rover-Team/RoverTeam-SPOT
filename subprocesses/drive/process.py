@@ -9,6 +9,8 @@ from sharedlib.controlsocket import schema
 
 import driveStackBinaries.torque as torque
 
+import imu.imu as imu
+
 #The status indicator
 import sharedlib.utilities.StatusIndicator as Status
 
@@ -73,29 +75,16 @@ async def control_loop(
         drive_mode = int(commanded_inputs["drive_mode"])
 
         drive_multiplier = commanded_inputs["drive_multiplier"]
+
+        if drive_mode == 2:
+            drive_multiplier = -1
+
         drive_l, drive_r = calc_drive(commanded_inputs["drive_x"], commanded_inputs["drive_y"])
 
         drive_l *= drive_multiplier
         drive_r *= drive_multiplier
 
         torqueController.set_speed(drive_l, drive_r)
-
-        if drive_mode == 0:
-            # Locked differential
-            torqueController.set_mode(torque.LOCKED_VELOCITY)
-            
-
-        elif drive_mode == 1:
-            # Unlocked differential
-            torqueController.set_mode(torque.UNLOCKED_VELOCITY)
-
-
-        elif drive_mode == 2:
-            # Direct torque mode (dangerous!)
-            torqueController.set_mode(torque.UNLOCKED_TORQUE)
-
-        else:
-            logger.warning(f"Unknown drive_mode: {drive_mode}")
 
         await asyncio.sleep(interval)
 
@@ -109,6 +98,23 @@ async def heartbeat_loop(shutdown_event, interval):
         print("HEARTBEAT")
         await asyncio.sleep(interval)
 
+
+async def make_drive_mode_event(torqueController, control_socket, mode: int, commanded_inputs: dict):
+    commanded_inputs["drive_mode"] = mode
+
+    modeMap = [
+        torque.UNLOCKED_VELOCITY,
+        torque.LOCKED_VELOCITY,
+        torque.UNLOCKED_TORQUE
+    ]
+
+    logger.warning(f"SWITCHED TO MODE: {mode}")
+
+    torqueController.set_mode(modeMap[mode])
+    await control_socket.outputs.update_output("drive_mode", mode)
+
+async def error_clear_event(torqueController):
+    torqueController.enable()
 
 # -------------------------
 # MAIN
@@ -176,12 +182,17 @@ async def main(
         ),
     )
 
-    schema.register_axis(
-        control_socket.inputs,
-        "drive_mode",
-        callback=lambda v: asyncio.create_task(
-            make_input_callback("drive_mode", commanded_inputs)(v)
-        ),
+    for mode in range(3):
+        control_socket.inputs.register_input(
+            f"drive_mode_{mode}",
+            type_="event",
+            callback=lambda m=mode: asyncio.create_task(make_drive_mode_event(torqueController, control_socket, m, commanded_inputs)) or asyncio.sleep(0) or True
+        )
+
+    control_socket.inputs.register_input(
+        f"clear_errors",
+        type_="event",
+        callback=lambda m=mode: asyncio.create_task(error_clear_event(torqueController)) or asyncio.sleep(0) or True
     )
 
     schema.register_axis(
@@ -199,7 +210,20 @@ async def main(
     control_socket.outputs.register_output("drive_x")
     control_socket.outputs.register_output("drive_y")
 
+    control_socket.outputs.register_output("gyro_p")
+    control_socket.outputs.register_output("gyro_y")
+    control_socket.outputs.register_output("gyro_r")
+
+    control_socket.outputs.register_output("vel_fd")
+    control_socket.outputs.register_output("vel_up")
+    control_socket.outputs.register_output("vel_lr")
+
+    control_socket.outputs.register_output("drive_mode")
+
     await control_socket.start()
+    
+    imu_driver = imu.IMUDriver(control_socket)
+    await imu_driver.start()
 
     logger.info(f"Drive control running on ws://{ws_host}:{ws_port}")
 
@@ -238,6 +262,7 @@ async def main(
     await asyncio.gather(*tasks, return_exceptions=True)
 
     await control_socket.stop()
+    await imu_driver.stop()
 
     logger.info("Shutdown complete")
 

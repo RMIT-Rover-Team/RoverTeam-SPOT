@@ -1,4 +1,3 @@
-# sharedlib/controlsocket/controlsocket.py
 from typing import Dict, Any
 from sharedlib.websocket.server import WebSocketServer
 from .input import InputRegistry
@@ -18,7 +17,6 @@ class ControlSocket:
         self.inputs = InputRegistry()
         self.outputs = OutputRegistry(self._server)
 
-        # Attach internal listener for incoming WS messages
         self._server.add_listener(self._handle_message)
 
     async def start(self):
