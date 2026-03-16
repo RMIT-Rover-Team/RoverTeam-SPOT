@@ -2,31 +2,18 @@ import asyncio
 import argparse
 import json
 import logging
-import time
-import math
+import signal
 
-from gamepad_ws.receiver import Receiver
-from gamepad_ws.server import GamepadServer
-from gamepad_ws.cors import cors_middleware
+from sharedlib.controlsocket.controlsocket import ControlSocket
+from sharedlib.controlsocket import schema
 
-#For Telemetry we directly connect to odrives (rover specific)
-from canbus.canbus import CANBus
-from canbus.ODrive import ODrive
-
-#For driving the wheels, we use the abstracted layer for torque / stability control
-#The correct binary is automatically selected by python for the architecture
 import driveStackBinaries.torque as torque
 
 #The status indicator
 import sharedlib.utilities.StatusIndicator as Status
 
-#
-
-#For debug output:
-#import driveStackBinaries.debugVersions.torque as torque
-
 # -------------------------
-# CONFIG
+# LOGGING
 # -------------------------
 
 class JsonHandler(logging.StreamHandler):
@@ -35,171 +22,225 @@ class JsonHandler(logging.StreamHandler):
         print(json.dumps(log_obj), flush=True)
 
 logger = logging.getLogger()
-logger.setLevel(logging.DEBUG)
+logger.setLevel(logging.INFO)
 logger.addHandler(JsonHandler())
 
-# -------------------------
-# CAN + ODrive setup
-# -------------------------
-
-bus = CANBus("can0")
-
-odrives = {
-    1: ODrive(1, bus, inverted=True),
-    2: ODrive(2, bus),
-    3: ODrive(3, bus, inverted=True),
-    4: ODrive(4, bus),
-}
-
-# Control state
-control_active = False
-
-#Torque Handler
-torqueSubsystem = torque.TorqueHandler("can0")
-torqueSubsystem.set_mode(torque.LOCKED_VELOCITY)
 
 # -------------------------
-# Heartbeat
+# SHUTDOWN FLAG
 # -------------------------
 
-async def heartbeat_loop(interval: float):
-    while True:
-        # Could be used for simple logging/debug
+shutdown_event = asyncio.Event()
+
+def request_shutdown():
+    logger.info("Shutdown signal received")
+    shutdown_event.set()
+
+
+# -------------------------
+# INPUT CALLBACK FACTORY
+# -------------------------
+
+def make_input_callback(name: str, commanded_inputs: dict):
+    async def callback(value: float):
+        commanded_inputs[name] = value
+    return callback
+
+def calc_drive(x: float, y: float):
+    drive_l = y + x
+    drive_r = y - x
+
+    # normalize if either exceeds magnitude 1
+    max_mag = max(1.0, abs(drive_l), abs(drive_r))
+    drive_l /= max_mag
+    drive_r /= max_mag
+
+    return drive_l, drive_r
+
+# -------------------------
+# CONTROL LOOP (placeholder)
+# -------------------------
+
+async def control_loop(
+    commanded_inputs,
+    control_socket,
+    torqueController,
+    shutdown_event,
+    interval,
+):
+    while not shutdown_event.is_set():
+
+        drive_mode = int(commanded_inputs["drive_mode"])
+
+        drive_multiplier = commanded_inputs["drive_multiplier"]
+        drive_l, drive_r = calc_drive(commanded_inputs["drive_x"], commanded_inputs["drive_y"])
+
+        drive_l *= drive_multiplier
+        drive_r *= drive_multiplier
+
+        torqueController.set_speed(drive_l, drive_r)
+
+        if drive_mode == 0:
+            # Locked differential
+            torqueController.set_mode(torque.LOCKED_VELOCITY)
+            
+
+        elif drive_mode == 1:
+            # Unlocked differential
+            torqueController.set_mode(torque.UNLOCKED_VELOCITY)
+
+
+        elif drive_mode == 2:
+            # Direct torque mode (dangerous!)
+            torqueController.set_mode(torque.UNLOCKED_TORQUE)
+
+        else:
+            logger.warning(f"Unknown drive_mode: {drive_mode}")
+
+        await asyncio.sleep(interval)
+
+
+# -------------------------
+# HEARTBEAT
+# -------------------------
+
+async def heartbeat_loop(shutdown_event, interval):
+    while not shutdown_event.is_set():
         print("HEARTBEAT")
         await asyncio.sleep(interval)
 
-def apply_control_curve(value: float, max_output: float = 50.0, steepness: float = 3.0) -> float:
-    """
-    Apply a curve to joystick input.
-    - value: joystick input [0..1]
-    - max_output: maximum speed/torque
-    - steepness: higher = steeper at start, flatter at top
-    """
-    # Clamp input just in case
-    value = max(0.0, min(1.0, value))
-
-    # Sigmoid-like curve: y = x / (x + (1-x) * exp(-k*x))
-    # simpler smoothstep variant: y = x^n / (x^n + (1-x)^n)
-    n = steepness
-    curved = (value**n) / (value**n + (1-value)**n) if value > 0 else 0.0
-
-    return curved * max_output
-
-# -------------------------
-# Gamepad Handlers
-# -------------------------
-
-async def handle_gamepad_message(msg: dict, receiver):
-    # Arm ODrives on first control message
-    if "control_active" in msg:
-        if receiver.control_active:
-            print(f"[INFO] Arming Drive System, Clearing Errors")
-            torqueSubsystem.enable()
-
-        if not receiver.control_active:
-            print(f"[INFO] Disarming Drive System")
-            torqueSubsystem.disable()
-
-    elif "buttons" in msg and "axes" in msg:
-        axes = msg["axes"]
-        buttons = msg["buttons"]
-
-        handle_button_batch(buttons, axes)
-    else:
-        logger.warning("unknown gamepad message: %s", msg)
-
-def handle_button_batch(buttons, axes):
-    rearm_button = buttons[0] if len(buttons) > 0 else 0.0
-    max_speed = 260
-    DEADZONE = 0.05
-
-    #[TODO] Add ability to change drive mode
-    """
-    One of these three:
-    torqueSubsystem.set_mode(torque.UNLOCKED_VELOCITY) - Safety Override, direct wheel drive
-    torqueSubsystem.set_mode(torque.LOCKED_VELOCITY) - Normal driving, hill climb / rough terrain (default mode)
-    torqueSubsystem.set_mode(torque.UNLOCKED_TORQUE) - Ripping swinburne's leg off again
-    """
-
-    x = axes[2] if len(axes) > 2 else 0.0
-    y = axes[3] if len(axes) > 3 else 0.0
-
-    # Apply deadzone
-    x = 0.0 if abs(x) < DEADZONE else x
-    y = 0.0 if abs(y) < DEADZONE else -y
-
-    # Rotate by 45°
-    cos45 = math.cos(math.pi / 4)
-    sin45 = math.sin(math.pi / 4)
-
-    left_speed = (y * cos45 + x * sin45) * max_speed
-    right_speed = (y * cos45 - x * sin45) * max_speed
-
-    # Optional: clamp speeds
-    left_speed = max(-max_speed, min(max_speed, left_speed))
-    right_speed = max(-max_speed, min(max_speed, right_speed))
-
-    # Apply to motors
-    torqueSubsystem.set_speed(left_speed,right_speed)
-
-# -------------------------
-# Telemetry loop
-# -------------------------
-async def telemetry_loop(interval: float, receiver):
-    HEARTBEAT_GRACE_PERIOD = interval * 3 # can skip 3 heartbeats
-    while True:
-        # Collect drive status directly from each ODrive object
-        now = time.time()
-        data = {
-            node_id: {
-                "state": od.state,
-                "error_code": od.error_code,
-                "error_string": od.error_string,
-                "traj_done": od.traj_done,
-                "last_seen": od.last_heartbeat_time,
-                "connected": (od.last_heartbeat_time is not None) and
-                                (now - od.last_heartbeat_time <= HEARTBEAT_GRACE_PERIOD),
-                "encoder_position": od.encoder_position,
-                "encoder_velocity": od.encoder_velocity,
-                "last_encoder": od.last_encoder_time,
-            }
-            for node_id, od in odrives.items()
-        }
-
-        # Send/print JSON telemetry
-        print(f"JSON {json.dumps({'type': 'drive', 'data': data})}")
-        await asyncio.sleep(interval)
 
 # -------------------------
 # MAIN
 # -------------------------
 
-async def main(heartbeat_interval: float, status_int: float, ws_host: str, ws_port: int):
-    receiver = Receiver(lambda msg: handle_gamepad_message(msg, receiver))
-    gamepad_server = GamepadServer(ws_host, ws_port, receiver, sender_agents=odrives)
+async def main(
+    ws_host: str,
+    ws_port: int,
+    ws_name: str,
+    status_interval: float,
+    heartbeat_interval: float,
+):
 
-    # Bring up the drive stack
-    torqueSubsystem.set_mode(torque.LOCKED_VELOCITY)
-    torqueSubsystem.enable()
+    # -------------------------
+    # INPUT STATE
+    # -------------------------
 
-    # Start server
-    await gamepad_server.start()
+    torqueController = torque.TorqueHandler("can0")
+    torqueController.set_mode(torque.LOCKED_VELOCITY)
+    torqueController.enable()
 
-    # Only keep heartbeat and slow telemetry as fallback
+    commanded_inputs = {
+        "drive_x": 0.0,
+        "drive_y": 0.0,
+        "drive_mode": 0,
+        "drive_multiplier": 200
+    }
+
+    # -------------------------
+    # SIGNAL HANDLERS
+    # -------------------------
+
+    loop = asyncio.get_running_loop()
+    loop.add_signal_handler(signal.SIGINT, request_shutdown)
+    loop.add_signal_handler(signal.SIGTERM, request_shutdown)
+
+    # -------------------------
+    # CONTROL SOCKET
+    # -------------------------
+
+    control_socket = ControlSocket(
+        ws_host,
+        ws_port,
+        ws_name,
+        allow_multiple_clients=False,
+    )
+
+    # -------------------------
+    # REGISTER INPUTS
+    # -------------------------
+
+    schema.register_axis(
+        control_socket.inputs,
+        "drive_x",
+        callback=lambda v: asyncio.create_task(
+            make_input_callback("drive_x", commanded_inputs)(v)
+        ),
+    )
+
+    schema.register_axis(
+        control_socket.inputs,
+        "drive_y",
+        callback=lambda v: asyncio.create_task(
+            make_input_callback("drive_y", commanded_inputs)(v)
+        ),
+    )
+
+    schema.register_axis(
+        control_socket.inputs,
+        "drive_mode",
+        callback=lambda v: asyncio.create_task(
+            make_input_callback("drive_mode", commanded_inputs)(v)
+        ),
+    )
+
+    schema.register_axis(
+        control_socket.inputs,
+        "drive_multiplier",
+        callback=lambda v: asyncio.create_task(
+            make_input_callback("drive_multiplier", commanded_inputs)(v)
+        ),
+    )
+
+    # -------------------------
+    # REGISTER OUTPUTS
+    # -------------------------
+
+    control_socket.outputs.register_output("drive_x")
+    control_socket.outputs.register_output("drive_y")
+
+    await control_socket.start()
+
+    logger.info(f"Drive control running on ws://{ws_host}:{ws_port}")
+
+    # -------------------------
+    # TASKS
+    # -------------------------
+
     tasks = [
-        asyncio.create_task(heartbeat_loop(heartbeat_interval)),
-        asyncio.create_task(telemetry_loop(status_int, receiver))
+        asyncio.create_task(
+            control_loop(
+                commanded_inputs,
+                control_socket,
+                torqueController,
+                shutdown_event,
+                status_interval,
+            ),
+            name="control_loop",
+        ),
+        asyncio.create_task(
+            heartbeat_loop(shutdown_event, heartbeat_interval),
+            name="heartbeat_loop",
+        ),
     ]
 
-    try:
-        await asyncio.gather(*tasks)
-    except asyncio.CancelledError:
-        logger.info("Shutdown received")
-    finally:
-        for t in tasks:
-            t.cancel()
-        await asyncio.sleep(0)
-        await gamepad_server.stop()
+    # -------------------------
+    # WAIT FOR SHUTDOWN
+    # -------------------------
+
+    await shutdown_event.wait()
+
+    logger.info("Shutting down tasks...")
+
+    for t in tasks:
+        t.cancel()
+
+    await asyncio.gather(*tasks, return_exceptions=True)
+
+    await control_socket.stop()
+
+    logger.info("Shutdown complete")
+
 
 # -------------------------
 # ENTRYPOINT
@@ -207,12 +248,20 @@ async def main(heartbeat_interval: float, status_int: float, ws_host: str, ws_po
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--heartbeat", type=float, default=1.0)
-    parser.add_argument("--odrive_status_interval", type=float, default=1.0)
-    parser.add_argument("--sub_url", type=str)
     parser.add_argument("--ws_host", type=str, default="0.0.0.0")
-    parser.add_argument("--ws_port", type=int, default=8765)
-    parser.add_argument("--can_port", type=str)
+    parser.add_argument("--ws_port", type=int, default=5001)
+    parser.add_argument("--ws_name", type=str, default="drive_control")
+    parser.add_argument("--status_interval", type=float, default=0.02)
+    parser.add_argument("--heartbeat", type=float, default=5.0)
+
     args = parser.parse_args()
 
-    asyncio.run(main(args.heartbeat, args.odrive_status_interval, args.ws_host, args.ws_port))
+    asyncio.run(
+        main(
+            args.ws_host,
+            args.ws_port,
+            args.ws_name,
+            args.status_interval,
+            args.heartbeat,
+        )
+    )
