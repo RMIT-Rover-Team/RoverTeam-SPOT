@@ -76,8 +76,8 @@ async def main(
     # -------------------------
     if dev:
         actuators = [
-            ("J1", DummyActuator("EXC1")),
-            ("J2", DummyActuator("EXC2"))
+            ("EXC1", DummyActuator("EXC1")),
+            ("EXC2", DummyActuator("EXC2"))
         ]
     else:
         actuators = [
