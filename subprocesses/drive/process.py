@@ -185,10 +185,16 @@ async def main(
     for mode in range(3):
         event_name = f"drive_mode_{mode}"
 
+        # Wrap in a helper to capture mode correctly
+        def make_callback(m: int):
+            return lambda v: asyncio.create_task(
+                make_drive_mode_event(control_socket, m, commanded_inputs)
+            )
+
         control_socket.inputs.register_input(
             event_name,
             type_="event",
-            callback=lambda v, m=mode: asyncio.create_task(make_drive_mode_event(control_socket, m, commanded_inputs))
+            callback=make_callback(mode)
         )
 
     schema.register_axis(
