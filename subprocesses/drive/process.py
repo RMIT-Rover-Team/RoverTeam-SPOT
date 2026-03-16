@@ -112,6 +112,10 @@ async def heartbeat_loop(shutdown_event, interval):
         await asyncio.sleep(interval)
 
 
+async def make_drive_mode_event(control_socket, mode: int, commanded_inputs: dict):
+    commanded_inputs["drive_mode"] = mode
+    control_socket.outputs.update_output("drive_mode", mode)
+
 # -------------------------
 # MAIN
 # -------------------------
@@ -178,13 +182,14 @@ async def main(
         ),
     )
 
-    schema.register_axis(
-        control_socket.inputs,
-        "drive_mode",
-        callback=lambda v: asyncio.create_task(
-            make_input_callback("drive_mode", commanded_inputs)(v)
-        ),
-    )
+    for mode in range(3):
+        event_name = f"drive_mode_{mode}"
+
+        control_socket.inputs.register_input(
+            event_name,
+            type_="event",
+            callback=lambda v, m=mode: asyncio.create_task(make_drive_mode_event(control_socket, m, commanded_inputs))
+        )
 
     schema.register_axis(
         control_socket.inputs,
@@ -208,6 +213,8 @@ async def main(
     control_socket.outputs.register_output("vel_fd")
     control_socket.outputs.register_output("vel_up")
     control_socket.outputs.register_output("vel_lr")
+
+    control_socket.outputs.register_output("drive_mode")
 
     await control_socket.start()
     
