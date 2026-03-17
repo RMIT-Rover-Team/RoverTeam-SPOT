@@ -1,7 +1,7 @@
 from sharedlib.payloadControl import pyRover
 
-IMU_ID = 0x2
-imuMaster = pyRover.PyRover("can0",1)
+IMU_ID = 0x5
+imuMaster = pyRover.PyRover("can0",0)
 
 
 class LEDCOLOUR:
@@ -12,7 +12,6 @@ class LEDCOLOUR:
     LOCKED = 4
     CONFLICT = 5
     ERROR = 6
-
 
 def setLED(myColour: int):
     imuMaster.ToggleState(IMU_ID, myColour, 1)
