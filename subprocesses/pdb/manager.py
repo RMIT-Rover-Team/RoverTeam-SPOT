@@ -8,7 +8,7 @@ from typing import List, Optional, Union
 from sharedlib.canbus.client import CANClient
 from sharedlib.payloadControl import pyRover
 
-from ..models import AttrID, BoardID, ChannelMetrics, CommandID, TelemetryState
+from .models import AttrID, BoardID, ChannelMetrics, CommandID, TelemetryState
 
 # imu 4
 
@@ -16,11 +16,11 @@ class PDBManager:
     def __init__(
         self,
         can_client: CANClient,
-        payload_master: pyRover,
+        pdb_master: pyRover,
         logger: Optional[logging.Logger] = None,
     ):
         self.can = can_client
-        self.payload_master = payload_master
+        self.pdb_master = pdb_master
 
         self.logger = logger
         self.id = 16
@@ -122,14 +122,20 @@ class PDBManager:
         self, board_id: Union[int, BoardID], channel_id: int
     ):
         board = BoardID(board_id)
+        state = self.boards[board]
         if board == BoardID.BMS:
-            await self._send_data_request(board.value, stream_id=channel_id)
+            _, float_value = self.pdb_master.RequestDataPoint(board.value, channel_id, 0)
+            state[channel_id] = float_value
+
         else:
             for attr in AttrID:
-                await self._send_data_request(
-                    board.value, stream_id=attr.value, channel_id=channel_id
+                _, float_value = self.pdb_master.RequestDataPoint(
+                    board.value,
+                    attr.value,
+                    channel_id,
                 )
 
+                state[channel_id][attr.value] = float_value
 
     async def toggle_channel(
         self, board_id: Union[int, BoardID], channel: int, enable: bool
@@ -147,7 +153,7 @@ class PDBManager:
         # data[1] = byte1
 
         # await self.can.send(can_id, bytes(data))
-        toggle_state_result = await self.payload_master.ToggleState(
+        self.pdb_master.ToggleState(
             board_id, channel, enable
         )
 
@@ -156,7 +162,7 @@ class PDBManager:
     async def cut_power(
         self, cell_id: int
     ):
-        cut_power_result = await self.payload_master.SetMotorPosition(cell_id, 0, 0)
+        self.pdb_master.SetMotorPosition(cell_id, 0, 0)
 
 
     async def estop(self, board_id: Union[int, BoardID]):
@@ -165,7 +171,7 @@ class PDBManager:
         # data = bytearray(8)
         # await self.can.send(can_id, bytes(data))
 
-        estop_result = await self.payload_master.estop(0)
+        self.pdb_master.estop(0)
 
 
     # --- Internal functions ---
@@ -238,17 +244,17 @@ class PDBManager:
         return 0 <= channel_id < board.max_channels
 
 
-    # --- SEND COMMANDS
-    async def _send_data_request(
-        self, board_id: int, stream_id: int, channel_id: int = 0
-    ):
-        can_id = self._build_arbitration_id(board_id, self.id)
+    # # --- SEND COMMANDS
+    # async def _send_data_request(
+    #     self, board_id: int, stream_id: int, channel_id: int = 0
+    # ):
+    #     can_id = self._build_arbitration_id(board_id, self.id)
 
-        byte0 = ((CommandID.REQUESTDP & 0x0F) << 4) | (stream_id & 0x0F)
-        byte1 = (channel_id & 0x0F) << 4
+    #     byte0 = ((CommandID.REQUESTDP & 0x0F) << 4) | (stream_id & 0x0F)
+    #     byte1 = (channel_id & 0x0F) << 4
 
-        data = bytearray(8)
-        data[0] = byte0
-        data[1] = byte1
+    #     data = bytearray(8)
+    #     data[0] = byte0
+    #     data[1] = byte1
 
-        await self.can.send(can_id, bytes(data))
+    #     await self.can.send(can_id, bytes(data))
