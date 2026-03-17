@@ -92,7 +92,7 @@ async def main(
         ]
     else:
         actuators = [
-            ("J1", DummyActuator("J1")),
+            ("J1", ODriveActuator("J1", 0x16)),
             ("J2", MyActuator("J2", 0x141)),
             ("J3", MyActuator("J3", 0x142)),
             ("J4", ODriveActuator("J4", 0x15)),
@@ -127,7 +127,7 @@ async def main(
     can_client = CANClient()
     await can_client.start()
 
-    manager = ActuatorManager(can_client, rate_hz=50.0)
+    manager = ActuatorManager(can_client, rate_hz=10.0)
     for _, actuator in actuators:
         manager.register(actuator)
 

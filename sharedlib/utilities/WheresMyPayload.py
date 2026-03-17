@@ -5,7 +5,7 @@ import time
 from sharedlib.payloadControl import pyRover
 
 PayloadID = 0xB
-payloadMaster = pyRover.PyRover("can0",1)
+payloadMaster = pyRover.PyRover("can0",0)
 
 
 

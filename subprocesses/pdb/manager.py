@@ -8,7 +8,7 @@ from typing import List, Optional, Union
 from sharedlib.canbus.client import CANClient
 from sharedlib.payloadControl import pyRover
 
-from .models import AttrID, BoardID, ChannelMetrics, CommandID, TelemetryState
+from sharedlib.models import PDBID, PDBStreamID, ChannelMetrics, CommandID, TelemetryState
 
 # imu 4
 
@@ -25,14 +25,14 @@ class PDBManager:
         self.logger = logger
         self.id = 16
 
-        self._valid_attr_ids = {a.value for a in AttrID}
+        self._valid_attr_ids = {a.value for a in PDBStreamID}
         self._valid_cmd_ids = {CommandID.REQUESTDP, CommandID.ESTOP}
 
-        self.boards: dict[BoardID, List[TelemetryState]] = {}
-        for board in BoardID:
+        self.boards: dict[PDBID, List[TelemetryState]] = {}
+        for board in PDBID:
             self.boards[board] = []
             for _ in range(board.max_channels):
-                initial_data = 0.0 if board == BoardID.BMS else ChannelMetrics()
+                initial_data = 0.0 if board == PDBID.BMS else ChannelMetrics()
                 self.boards[board].append(TelemetryState(metric_data=initial_data))
              
                 
@@ -44,7 +44,7 @@ class PDBManager:
 
 
     def register_all(self):
-        for board in BoardID:
+        for board in PDBID:
             arb_id = self._build_arbitration_id(self.id, board)
             self.register(arb_id)
 
@@ -61,14 +61,14 @@ class PDBManager:
         if not is_valid_msg:
             return
 
-        board_enum = BoardID(src_id)
+        board_enum = PDBID(src_id)
         state = self.boards[board_enum]
 
         value = struct.unpack_from("<f", data, 2)[0]
 
         stream_name = self._get_stream(stream_id)
 
-        if src_id == BoardID.BMS:  # BMS
+        if src_id == PDBID.BMS:  # BMS
             state[stream_id].metric_data = value
         else:  # Channel Metrics
             stream_name = self._get_stream(stream_id)
@@ -106,12 +106,12 @@ class PDBManager:
         return pending_data_list
 
     async def request_pdb_data(self):
-        for board in BoardID:
+        for board in PDBID:
             await self.request_board_data(board)
 
 
-    async def request_board_data(self, board_id: Union[int, BoardID]):
-        board = BoardID(board_id)  # cast just in case
+    async def request_board_data(self, board_id: Union[int, PDBID]):
+        board = PDBID(board_id)  # cast just in case
 
         for channel_idx in range(board.max_channels):
             await self.request_channel_data(board, channel_idx)
@@ -119,26 +119,21 @@ class PDBManager:
 
 
     async def request_channel_data(
-        self, board_id: Union[int, BoardID], channel_id: int
+        self, board_id: Union[int, PDBID], channel_id: int
     ):
-        board = BoardID(board_id)
-        state = self.boards[board]
-        if board == BoardID.BMS:
-            _, float_value = self.pdb_master.RequestDataPoint(board.value, channel_id, 0)
-            state[channel_id] = float_value
-
+        board = PDBID(board_id)
+        if board == PDBID.BMS:
+            await self._send_data_request(board.value, stream_id=channel_id)
         else:
-            for attr in AttrID:
-                _, float_value = self.pdb_master.RequestDataPoint(
-                    board.value,
-                    attr.value,
-                    channel_id,
+            for attr in PDBStreamID:
+                await self._send_data_request(
+                    board.value, stream_id=attr.value, channel_id=channel_id
                 )
 
                 state[channel_id][attr.value] = float_value
 
     async def toggle_channel(
-        self, board_id: Union[int, BoardID], channel: int, enable: bool
+        self, board_id: Union[int, PDBID], channel: int, enable: bool
     ):
         # OLD CANBUS LOGIC. HERE JUST IN CASE THE FIRMWARE SHITS THE BED
         # can_id = self._build_arbitration_id(board_id, self.id)
@@ -153,7 +148,7 @@ class PDBManager:
         # data[1] = byte1
 
         # await self.can.send(can_id, bytes(data))
-        self.pdb_master.ToggleState(
+        toggle_state_result = await self.pdb_master.ToggleState(
             board_id, channel, enable
         )
 
@@ -162,16 +157,16 @@ class PDBManager:
     async def cut_power(
         self, cell_id: int
     ):
-        self.pdb_master.SetMotorPosition(cell_id, 0, 0)
+        cut_power_result = await self.pdb_master.SetMotorPosition(cell_id, 0, 0)
 
 
-    async def estop(self, board_id: Union[int, BoardID]):
+    async def estop(self, board_id: Union[int, PDBID]):
         # can_id = self._build_arbitration_id(board_id, self.id)
 
         # data = bytearray(8)
         # await self.can.send(can_id, bytes(data))
 
-        self.pdb_master.estop(0)
+        estop_result = await self.pdb_master.estop(0)
 
 
     # --- Internal functions ---
@@ -196,10 +191,10 @@ class PDBManager:
     @staticmethod
     def _get_stream(stream_id: int) -> str:
         stream_map = {
-            AttrID.CURRENT.value: "current",
-            AttrID.VOLTAGE.value: "voltage",
-            AttrID.POWER.value: "power",
-            AttrID.TEMP.value: "temp",
+            PDBStreamID.CURRENT.value: "current",
+            PDBStreamID.VOLTAGE.value: "voltage",
+            PDBStreamID.POWER.value: "power",
+            PDBStreamID.TEMP.value: "temp",
         }
         return stream_map.get(stream_id, "")
 
@@ -220,7 +215,9 @@ class PDBManager:
         data_len: int,
     ) -> bool:
         # Check valid ids
-        if dest_id != (self.id & 0x1F) or src_id not in [b_id for b_id in BoardID]:
+        if dest_id != (self.id & 0x1F) or src_id not in [
+            b_id for b_id in PDBID
+        ]:
             return False
 
         if cmd_id not in self._valid_cmd_ids:
@@ -229,9 +226,9 @@ class PDBManager:
         if data_len < 8:
             return False
 
-        board = BoardID(src_id)
+        board = PDBID(src_id)
 
-        if src_id == BoardID.BMS:
+        if src_id == PDBID.BMS:
             return 0 <= stream_id < board.max_channels
 
         stream_name = self._get_stream(stream_id)

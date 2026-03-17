@@ -1,10 +1,15 @@
 import os
 import asyncio
+from aiortc import VideoStreamTrack
 import logging
-import subprocess
-import time
+import av.container
+import av.stream
+import numpy as np
+import av
+from typing import Optional
 
-class V4L2CameraTrack:
+
+class V4L2CameraTrack(VideoStreamTrack):
     WIDTH = 640
     HEIGHT = 480
     FPS = 30
@@ -12,11 +17,16 @@ class V4L2CameraTrack:
     RETRY_DELAY = 2
     MAX_RETRIES = 10
 
+    kind = "video"
+
     def __init__(self, index: int, label: str, logger: logging.Logger, width: int, height: int):
+        super().__init__()
         self.index = index
         self.label = label
         self.logger = logger
         self.device = f"/dev/video{index}"
+        self.container: Optional[av.container.InputContainer] = None
+        self.stream: Optional[av.stream.Stream] = None
 
         self.WIDTH = width
         self.HEIGHT = height
@@ -24,92 +34,65 @@ class V4L2CameraTrack:
         if not os.path.exists(self.device):
             raise RuntimeError(f"{self.device} not found")
 
-        # File handle for raw capture
-        self._fd = None
-
-    # --------------------------------------------------
-
-    def _nuke_device(self):
-        self.logger.warning(f"[{self.label}] Forcing device release")
-
-        subprocess.run(["fuser", "-k", self.device],
-                       stdout=subprocess.DEVNULL,
-                       stderr=subprocess.DEVNULL)
-
-        time.sleep(0.3)
-
-    # --------------------------------------------------
-
-    def _force_mjpeg(self):
-        subprocess.run(
-            [
-                "v4l2-ctl",
-                "-d", self.device,
-                f"--set-fmt-video=width={self.WIDTH},height={self.HEIGHT},pixelformat=MJPG"
-            ],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL
-        )
-
-        subprocess.run(
-            ["v4l2-ctl", "-d", self.device, f"--set-parm={self.FPS}"],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL
-        )
-
     # --------------------------------------------------
 
     def _open_device(self):
-        self._nuke_device()
-        self._force_mjpeg()
-        self.logger.info(f"[{self.label}] Device ready at {self.WIDTH}x{self.HEIGHT} @ {self.FPS} FPS")
-
-        # Open the device file for reading frames (raw MJPEG)
-        self._fd = open(self.device, "rb", buffering=0)
+        self._cleanup()
+        
+        self.container = av.open(
+            self.device,
+            format="v4l2",
+            options={
+                "video_size": f"{self.WIDTH}x{self.HEIGHT}",
+                "pixel_format": "mjpeg",  # Or 'yuyv422'
+            },
+        )
+        self.stream = self.container.streams.video[0]
+        self.logger.info(f"[{self.label}] Opened with PyAV")
 
     # --------------------------------------------------
+    
+    async def recv(self) -> av.VideoFrame:
+        if self.container is None or self.stream is None:
+            self._open_device()
 
-    async def recv(self):
-        attempts = 0
+        loop = asyncio.get_event_loop()
+        try:
+            
+            # Get next frame from the generator
+            # We use next() on the decode generator
+            if not self.container:
+                raise TypeError("Expected container")
+            frame = await loop.run_in_executor(None, lambda: next(self.container.decode(self.stream)))
 
-        while True:
-            try:
-                if not self._fd:
-                    self._open_device()
+            # Ensure the frame is a video frame
+            if not isinstance(frame, av.VideoFrame):
+                raise TypeError("Expected av.VideoFrame")
 
-                # Read a single MJPEG frame from the device
-                # NOTE: adjust size if necessary or use a proper MJPEG parser
-                # Here we just read raw bytes
-                frame = self._fd.read(self.WIDTH * self.HEIGHT * 3)  # rough placeholder
+            # Calculate timing
+            pts, time_base = await self.next_timestamp()
+            frame.pts = pts
+            frame.time_base = time_base
 
-                return frame
-
-            except Exception as e:
-                attempts += 1
-                self.logger.warning(
-                    f"[{self.label}] Camera error: {e} (attempt {attempts})"
-                )
-
-                self._cleanup()
-
-                if attempts >= self.MAX_RETRIES:
-                    raise RuntimeError(f"{self.label} failed permanently")
-
-                await asyncio.sleep(self.RETRY_DELAY)
+            return frame
+        except (StopIteration, Exception) as e:
+            self.logger.error(f"[{self.label}] Camera error: {e}")
+            self._cleanup()
+            raise ConnectionError("Camera stream failed")
 
     # --------------------------------------------------
 
     def _cleanup(self):
-        try:
-            if self._fd:
-                try:
-                    self._fd.close()
-                except Exception:
-                    pass
-        finally:
-            self._fd = None
+        if self.container:
+            try:
+                self.container.close()
+            except Exception:
+                pass
+        self.container = None
+        self.stream = None
 
     # --------------------------------------------------
 
     def stop(self):
         self._cleanup()
+        super().stop()

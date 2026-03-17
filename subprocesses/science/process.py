@@ -9,13 +9,10 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import PlainTextResponse
 
-from sharedlib.models import PDBID
-from sharedlib.canbus.client import CANClient
+from sharedlib.models import ScienceID
 from sharedlib.payloadControl import pyRover
-from subprocesses.pdb.manager import PDBManager
+from subprocesses.science.manager import ScienceManager
 
-
-# logger.log(25, msg) (SUCCESS)
 # -------------------------
 # CONFIG
 # -------------------------
@@ -38,10 +35,11 @@ app.add_middleware(
     allow_headers=["*"],  # Allows all headers
 )
 
-pdb: PDBManager
+science: ScienceManager
 shutdown_event = asyncio.Event()
 
 polling_intervals = {"websocket": 1.0, "can": 1.0}
+
 
 async def heartbeat_loop(interval: float):
     """
@@ -54,47 +52,45 @@ async def heartbeat_loop(interval: float):
 
 
 # -------------------------
-# PDB Loops
+# Science Loops
 # -------------------------
-async def pdb_websocket_loop(pdb: PDBManager, interval: float = 1.0) -> None:
+async def science_websocket_loop(
+    science: ScienceManager, interval: float = 1.0
+) -> None:
     """
-    Takes the state of PDBManager and sends it through the telemetry websocket. The topic of the pdb_telemetry_loop is pdb_data.
-        pdb -- The PDB manager that receives, sends and stores pdb data
+    Takes the state of science manager and sends it through the telemetry websocket. The topic of the science_telemetry_loop is science_data.
+        science -- The science manager that receives, sends and stores pdb data
         interval -- interval in seconds
     """
     try:
         polling_intervals["websocket"] = interval
         while not shutdown_event.is_set():
             # Get the data
-            data = pdb.get_pending_data()
+            data = science.get_telemetry_data()
             if data:
-                msg = json.dumps({"type": "pdb_data", "data": data})
-                print(f"JSON {msg}")  # send data over to pdb
+                msg = json.dumps({"type": "science_data", "data": data})
+                print(f"JSON {msg}")  # send data over to science
 
             await asyncio.sleep(polling_intervals["websocket"])
     except Exception as e:
-        logger.error(f"Sending PDB Telemetry Data ran into an error: {e}")
+        logger.error(f"Sending Science Telemetry Data ran into an error: {e}")
         request_shutdown()  # request shutdown to restart
 
 
-async def pdb_can_loop(pdb: PDBManager, interval: float = 1.0) -> None:
+async def science_can_loop(science: ScienceManager, interval: float = 1.0) -> None:
     """
-    Sends a request for PDB data from pdb manager to update it.
-        pdb -- The PDB manager that receives, sends and stores pdb data
+    Sends a request for science data from science manager to update it.
+        science -- The science manager that receives, sends and stores pdb data
         interval -- interval in seconds
     """
+    await asyncio.sleep(0.1)
+    stepper_ids = [ScienceID.AUGER, ScienceID.MICROSCOPE, ScienceID.MICROSCOPE_SWIVEL]
     try:
-        logger.info(f"PDB: Starting sequenced polling (step: {interval}s)")
-        polling_intervals["can"] = interval
         while not shutdown_event.is_set():
-            for board in PDBID:
-                await pdb.request_board_data(board)
-                await asyncio.sleep(polling_intervals["can"])
-
-                if shutdown_event.is_set():
-                    break
-    except asyncio.CancelledError:
-        pass
+            await science.refresh_drill_telemetry()
+            [await science.refresh_stepper_telemetry(s_id) for s_id in stepper_ids]
+    
+            await asyncio.sleep(polling_intervals["can"])
     except Exception as e:
         logger.error(f"Sequenced Polling Loop error: {e}")
         request_shutdown()
@@ -105,58 +101,39 @@ async def ping():
     """
     Pings frontend
     """
-    return PlainTextResponse("pdb")
+    return PlainTextResponse("science")
 
 
-@app.post("/switch1/channel/{channel}/{enable}")
-async def toggle_switch(channel: int, enable: int):
-    # Validation
-    if not (0 <= channel <= 7):
-        raise HTTPException(status_code=400, detail="Channel does not exist")
-    if enable not in [0, 1]:
-        raise HTTPException(status_code=400, detail="Enable must be 0 or 1")
-
-    is_on = True if enable == 1 else False
-
-    await pdb.toggle_channel(PDBID.SWITCH, channel, is_on)
-
-    logger.info(f"COMMAND: Switch Board | Channel: {channel} | State: {is_on}")
-
-    return {"message": f"Switch channel {'enabled' if is_on else 'disabled'}"}
+@app.post("/science/estop")
+async def estop():
+    science.estop()
 
 
-@app.post("/buck1/channel/{channel}/{enable}")
-async def toggle_buck1(channel: int, enable: int):
-    if not (0 <= channel <= 4):
-        raise HTTPException(status_code=400, detail="Channel does not exist")
-    if enable not in [0, 1]:
-        raise HTTPException(status_code=400, detail="Enable must be 0 or 1")
+@app.post("/drill/speed/{speed}")
+async def set_drill_speed(speed: int):
+    await science.set_drill_speed(speed)
 
-    is_on = True if enable == 1 else False
-
-    await pdb.toggle_channel(PDBID.BUCK1, channel, is_on)
-    return {"message": f"Buck 1 channel {'enabled' if enable else 'disabled'}"}
+    logger.info(f"COMMAND: Science Drill speed | Speed: {speed}")
+    return {"message": f"Set drill speed to {speed}"}
 
 
-@app.post("/buck2/channel/{channel}/{enable}")
-async def toggle_buck2(channel: int, enable: int):
-    if not (0 <= channel <= 4):
-        raise HTTPException(status_code=400, detail="Channel does not exist")
+@app.post("/steppers/{motor_id}/{steps}")
+async def set_stepper_steps(motor_id: int, steps: int):
+    if motor_id > 3 or motor_id == 0:
+        raise HTTPException(status_code=400, detail="Motor id is invalid")
 
-    is_on = True if enable == 1 else False
-
-    await pdb.toggle_channel(PDBID.BUCK2, channel, is_on)
-    return {"message": "Buck 2 updated"}
+    await science.set_stepper_steps(motor_id, steps)
+    return {"message": f"Set motor {motor_id} to step {steps} times."}
 
 
-@app.post("/bms/estop")
-async def estop_bms():
-    await pdb.cut_power(1)
-    await pdb.cut_power(2)
-    await pdb.cut_power(3)
+@app.post("/heatpad/{toggle}")
+async def set_heatpad_toggle(toggle: int):
+    heatpad_status = True if toggle == 1 else False
 
+    
+    await science.set_heatpad_toggle(heatpad_status)
 
-@app.post("/pdb/can/polling/{interval}")
+@app.post("/science/can/polling/{interval}")
 async def change_can_interval(interval: float):
     # Validation
     if interval < 0:
@@ -169,7 +146,7 @@ async def change_can_interval(interval: float):
     return {"message": f"CAN polling rate set to {interval}"}
 
 
-@app.post("/pdb/websocket/polling/{interval}")
+@app.post("/science/websocket/polling/{interval}")
 async def change_websocket_interval(interval: float):
     # Validation
     if interval < 0:
@@ -200,7 +177,7 @@ async def main(
     status_interval: float,
     heartbeat_interval: float,
 ):
-    global pdb
+    global science
 
     loop = asyncio.get_running_loop()
     loop.add_signal_handler(signal.SIGINT, request_shutdown)
@@ -209,13 +186,8 @@ async def main(
     # -------------------------
     # CAN setup
     # -------------------------
-    can_client = CANClient()
-    await can_client.start()
-
-    pdb_master = pyRover.PyRover("vcan0", 16)
-
-    pdb = PDBManager(can_client, pdb_master, logger)
-    pdb.register_all()
+    science_master = pyRover.PyRover("can0", 0)
+    science = ScienceManager(science_master, logger)
 
     # -------------------------
     # Websocket
@@ -226,34 +198,34 @@ async def main(
     server_task = asyncio.create_task(server.serve())
 
     global polling_intervals
-    polling_intervals = {"websocket": 1.0, "can": 1.0}
+    polling_intervals = {"websocket": 1.0, "can": 2.0}
 
     heartbeat_task = asyncio.create_task(heartbeat_loop(heartbeat_interval))
-    pdb_websocket_task = asyncio.create_task(
-        pdb_websocket_loop(pdb, interval=polling_intervals["websocket"])
+    science_websocket_task = asyncio.create_task(
+        science_websocket_loop(science, interval=polling_intervals["websocket"])
     )
-    pdb_can_task = asyncio.create_task(
-        pdb_can_loop(pdb, interval=polling_intervals["can"])
+    science_can_task = asyncio.create_task(
+        science_can_loop(science, interval=polling_intervals["can"])
     )
 
     # Wait for shutdown...
     await shutdown_event.wait()
+    await server_task
+
 
     # Cleanup
-    await server_task
     heartbeat_task.cancel()
-    pdb_websocket_task.cancel()
-    pdb_can_task.cancel()
+    science_websocket_task.cancel()
+    science_can_task.cancel()
 
     await asyncio.sleep(0)
-    await can_client.close()
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--ws_host", type=str, default="0.0.0.0")
-    parser.add_argument("--ws_port", type=int, default=5000)
-    parser.add_argument("--ws_name", type=str, default="pdb_telemetry")
+    parser.add_argument("--ws_port", type=int, default=5003)
+    parser.add_argument("--ws_name", type=str, default="science_telemetry")
     parser.add_argument("--status_interval", type=float, default=0.02)
     parser.add_argument("--heartbeat", type=float, default=2.0)
 

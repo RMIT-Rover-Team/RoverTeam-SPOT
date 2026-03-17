@@ -5,41 +5,51 @@ from typing import Union
 import dataclasses
 
 
-class MasterID(IntEnum):
-    EQUINOX_1 = 0x1
-    EQUINOX_2 = 0x2
-
-
 class BoardID(IntEnum):
+    SCIENCE = 0xC
     SWITCH = 0xA
     BUCK1 = 0x06
     BUCK2 = 0x07
     BMS = 0x08
 
+class ScienceID(IntEnum):
+    DRILL = 0
+    AUGER = 1
+    MICROSCOPE = 2
+    MICROSCOPE_SWIVEL = 3
+    HEATER = 4
+    PELTIER = 5
+
+class PDBID(IntEnum):
+    SWITCH = BoardID.SWITCH
+    BUCK1 = BoardID.BUCK1
+    BUCK2 = BoardID.BUCK2
+    BMS = BoardID.BMS
+
     @property
     def max_channels(self) -> int:
         """Returns the number of channels/cells allowed for this board."""
-        return BOARD_LIMITS[self]
+        return PDB_BOARD_LIMITS[self]
 
-class ChannelLength(IntEnum):
+class PDBChannelLength(IntEnum):
     SWITCH = 8
     BUCK1 = 2
     BUCK2 = 2
 
 
-class CellLength(IntEnum):
+class PDBCellLength(IntEnum):
     BMS = 12
 
 
-BOARD_LIMITS = {
-    BoardID.SWITCH: ChannelLength.SWITCH,
-    BoardID.BUCK1: ChannelLength.BUCK1,
-    BoardID.BUCK2: ChannelLength.BUCK2,
-    BoardID.BMS: CellLength.BMS,
+PDB_BOARD_LIMITS = {
+    PDBID.SWITCH: PDBChannelLength.SWITCH,
+    PDBID.BUCK1: PDBChannelLength.BUCK1,
+    PDBID.BUCK2: PDBChannelLength.BUCK2,
+    PDBID.BMS: PDBCellLength.BMS,
 }
 
 
-class AttrID(IntEnum):
+class PDBStreamID(IntEnum):
     CURRENT = 0
     VOLTAGE = 1
     POWER = 2
@@ -48,8 +58,12 @@ class AttrID(IntEnum):
 
 class CommandID(IntEnum):
     ESTOP = 0x00
+    CALIBRATE = 0x1
     SETPOSITION = 0x02
+    SETSPEED = 0x3
     TOGGLE = 0x04
+    GETPOSITION = 0x05
+    GETSPEED = 0x6
     BROADCASTDP = 0x07
     REQUESTDP = 0x08
 
