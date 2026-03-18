@@ -5,7 +5,6 @@ import struct
 from dataclasses import asdict
 from typing import List, Optional, Union
 
-from sharedlib.canbus.client import CANClient
 from sharedlib.payloadControl import pyRover
 
 from sharedlib.models import PDBID, PDBStreamID, ChannelMetrics, CommandID, TelemetryState
@@ -15,11 +14,9 @@ from sharedlib.models import PDBID, PDBStreamID, ChannelMetrics, CommandID, Tele
 class PDBManager:
     def __init__(
         self,
-        can_client: CANClient,
         pdb_master: pyRover,
         logger: Optional[logging.Logger] = None,
     ):
-        self.can = can_client
         self.pdb_master = pdb_master
 
         self.logger = logger

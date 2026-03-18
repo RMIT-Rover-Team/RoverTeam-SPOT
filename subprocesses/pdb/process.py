@@ -10,7 +10,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import PlainTextResponse
 
 from sharedlib.models import PDBID
-from sharedlib.canbus.client import CANClient
 from sharedlib.payloadControl import pyRover
 from subprocesses.pdb.manager import PDBManager
 
@@ -209,13 +208,8 @@ async def main(
     # -------------------------
     # CAN setup
     # -------------------------
-    can_client = CANClient()
-    await can_client.start()
-
-    pdb_master = pyRover.PyRover("vcan0", 16)
-
-    pdb = PDBManager(can_client, pdb_master, logger)
-    pdb.register_all()
+    pdb_master = pyRover.PyRover(0)
+    pdb = PDBManager(pdb_master, logger)
 
     # -------------------------
     # Websocket
@@ -246,7 +240,6 @@ async def main(
     pdb_can_task.cancel()
 
     await asyncio.sleep(0)
-    await can_client.close()
 
 
 if __name__ == "__main__":
