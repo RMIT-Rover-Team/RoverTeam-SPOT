@@ -208,7 +208,7 @@ async def main(
     # -------------------------
     # CAN setup
     # -------------------------
-    pdb_master = pyRover.PyRover(0)
+    pdb_master = pyRover.PyRover("can0", 0)
     pdb = PDBManager(pdb_master, logger)
 
     # -------------------------
