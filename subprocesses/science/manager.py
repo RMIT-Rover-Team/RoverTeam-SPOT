@@ -28,6 +28,9 @@ class ScienceTelemetry:
             ScienceID.PELTIER: False
         }
     )
+    sensors: dict[int, float] = field(
+        default_factory=float
+    )
 
 
 
@@ -80,7 +83,7 @@ class ScienceManager:
         if motor_id > 3 or motor_id == 0:
             return
 
-        self.payload_master.SetMotorSpeed(BoardID.SCIENCE, motor_id, float(speed))
+        self.payload_master.SetMotorSpeed(BoardID.SCIENCE, motor_id, float(speed))  
         self.telemetry.stepper_motors[motor_id] = int(speed)
 
     async def set_heatpad_toggle(self, toggle: bool):
@@ -98,6 +101,15 @@ class ScienceManager:
         _, speed = self.payload_master.GetMotorSpeed(BoardID.SCIENCE, motor_id)
         
         self.telemetry.stepper_motors[motor_id] = int(speed)
+
+    async def refresh_sensor_telemetry(self, channel_id: int):
+        if channel_id < 0 or channel_id > 7:
+            return
+
+        _, sensor_return = self.payload_master.RequestDatapoint(BoardID.SCIENCE, ScienceID.SENSOR, channel_id)
+
+        self.telemetry.sensors[channel_id] = sensor_return
+
         
     def get_drill_speed(self) -> int:
         return self.telemetry.drill

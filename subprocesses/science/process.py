@@ -22,7 +22,7 @@ class JsonHandler(logging.StreamHandler):
         print(json.dumps(log_obj), flush=True)
 
 
-logger = logging.getLogger("pdb")
+logger = logging.getLogger("science")
 logger.setLevel(logging.INFO)
 logger.addHandler(JsonHandler())
 
@@ -59,7 +59,7 @@ async def science_websocket_loop(
 ) -> None:
     """
     Takes the state of science manager and sends it through the telemetry websocket. The topic of the science_telemetry_loop is science_data.
-        science -- The science manager that receives, sends and stores pdb data
+        science -- The science manager that receives, sends and stores science data
         interval -- interval in seconds
     """
     try:
@@ -80,7 +80,7 @@ async def science_websocket_loop(
 async def science_can_loop(science: ScienceManager, interval: float = 1.0) -> None:
     """
     Sends a request for science data from science manager to update it.
-        science -- The science manager that receives, sends and stores pdb data
+        science -- The science manager that receives, sends and stores science data
         interval -- interval in seconds
     """
     await asyncio.sleep(0.1)
@@ -89,6 +89,7 @@ async def science_can_loop(science: ScienceManager, interval: float = 1.0) -> No
         while not shutdown_event.is_set():
             await science.refresh_drill_telemetry()
             [await science.refresh_stepper_telemetry(s_id) for s_id in stepper_ids]
+            await science.refresh_sensor_telemetry(ScienceID.HEATER_SENSOR)
     
             await asyncio.sleep(polling_intervals["can"])
     except Exception as e:

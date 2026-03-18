@@ -19,6 +19,7 @@ class ScienceID(IntEnum):
     MICROSCOPE_SWIVEL = 3
     HEATER = 4
     PELTIER = 5
+    HEATER_SENSOR = 2
 
 class PDBID(IntEnum):
     SWITCH = BoardID.SWITCH
