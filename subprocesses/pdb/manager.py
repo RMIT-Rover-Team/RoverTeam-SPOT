@@ -39,19 +39,17 @@ class PDBManager:
 
             for channel_idx, state in enumerate(channels):
                 if state.pending_send:
-                    for channel_idx, state in enumerate(channels):
-                        if state.pending_send:
-                            if board_key not in pending_data_list:
-                                pending_data_list[board_key] = {}
-                            
-                            # Convert Dataclass to Dict and Enum to String
-                            if isinstance(state.metric_data, ChannelMetrics):
-                                pending_data_list[board_key][channel_idx] = asdict(state.metric_data)
-                            else:
-                                # For BMS which is just a float
-                                pending_data_list[board_key][channel_idx] = state.metric_data
-                            
-                            state.pending_send = False # Reset flag
+                    if board_key not in pending_data_list:
+                        pending_data_list[board_key] = {}
+                    
+                    # Convert Dataclass to Dict and Enum to String
+                    if isinstance(state.metric_data, ChannelMetrics):
+                        pending_data_list[board_key][channel_idx] = asdict(state.metric_data)
+                    else:
+                        # For BMS which is just a float
+                        pending_data_list[board_key][channel_idx] = state.metric_data
+                    
+                    state.pending_send = False # Reset flag
 
         return pending_data_list
 
@@ -89,7 +87,7 @@ class PDBManager:
                 target_channel = state[channel_id].metric_data
                 stream_name = self._get_stream(attr)
 
-                # update stored values
+                # update stored values                
                 setattr(target_channel, stream_name, returned_value)
                 state[channel_id].last_updated = datetime.datetime.now()
                 state[channel_id].pending_send = True
@@ -110,23 +108,6 @@ class PDBManager:
     # --- Internal functions ---
     # --- PARSING MSG
     @staticmethod
-    def _parse_arbitration_id(arbitration_id: int) -> tuple[int, int]:
-        dest_id = (arbitration_id >> 6) & 0x3F
-        src_id = arbitration_id & 0x3F
-
-        return dest_id, src_id
-
-    def _parse_can_msg(
-        self, msg_id: int, data: bytes
-    ) -> tuple[int, int, int, int, int]:
-        dest_id, src_id = self._parse_arbitration_id(msg_id)
-        cmd_id = (data[0] >> 4) & 0x0F
-        stream_id = data[0] & 0x0F
-        channel_id = (data[1] >> 4) & 0x0F
-        return dest_id, src_id, cmd_id, stream_id, channel_id
-
-
-    @staticmethod
     def _get_stream(stream_id: int) -> str:
         stream_map = {
             PDBStreamID.CURRENT.value: "current",
@@ -136,45 +117,3 @@ class PDBManager:
             PDBStreamID.TOGGLE.value: "toggle",
         }
         return stream_map.get(stream_id, "")
-
-
-    # --- MISC HELPERS
-    @staticmethod
-    def _build_arbitration_id(dest_id: int, src_id: int) -> int:
-        return ((dest_id & 0x3F) << 6) | (src_id & 0x3F)
-
-
-    def _validate_msg(
-        self,
-        dest_id: int,
-        src_id: int,
-        cmd_id: int,
-        stream_id: int,
-        channel_id: int,
-        data_len: int,
-    ) -> bool:
-        # Check valid ids
-        if dest_id != (self.id & 0x1F) or src_id not in [
-            b_id for b_id in PDBID
-        ]:
-            return False
-
-        if cmd_id not in self._valid_cmd_ids:
-            return False
-
-        if data_len < 8:
-            return False
-
-        board = PDBID(src_id)
-
-        if src_id == PDBID.BMS:
-            return 0 <= stream_id < board.max_channels
-
-        stream_name = self._get_stream(stream_id)
-        if not stream_name:
-            return False
-
-        if board not in self.boards:
-            return False
-
-        return 0 <= channel_id < board.max_channels
