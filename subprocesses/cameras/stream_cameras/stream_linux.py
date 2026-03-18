@@ -1,98 +1,117 @@
 import os
 import asyncio
-from aiortc import VideoStreamTrack
+import threading
 import logging
-import av.container
-import av.stream
+import time
 import numpy as np
 import av
-from typing import Optional
+from aiortc import VideoStreamTrack
 
 
-class V4L2CameraTrack(VideoStreamTrack):
-    WIDTH = 640
-    HEIGHT = 480
-    FPS = 30
+class CameraBroadcaster:
+    """
+    Reads from the camera in a dedicated background thread to prevent buffer bloat
+    and shares the latest frame with multiple WebRTC clients.
+    """
 
-    RETRY_DELAY = 2
-    MAX_RETRIES = 10
+    def __init__(self, device: str, width: int, height: int, logger: logging.Logger):
+        self.device = device
+        self.width = width
+        self.height = height
+        self.logger = logger
+
+        self.latest_frame_array = None
+        self.frame_id = 0
+
+        self.running = False
+        self._lock = threading.Lock()
+        self._thread = None
+        self._loop = asyncio.get_event_loop()
+        self._new_frame_event = asyncio.Event()
+
+    def start(self):
+        if self.running:
+            return
+        self.running = True
+        self._thread = threading.Thread(target=self._capture_loop, daemon=True)
+        self._thread.start()
+        self.logger.info(f"[{self.device}] Broadcaster thread started.")
+
+    def stop(self):
+        self.running = False
+        if self._thread and self._thread.is_alive():
+            self._thread.join(timeout=2)
+        self.logger.info(f"[{self.device}] Broadcaster thread stopped.")
+
+    def _capture_loop(self):
+        """Runs in a standard Python Thread."""
+        container = None
+        try:
+            container = av.open(
+                self.device,
+                format="v4l2",
+                options={
+                    "video_size": f"{self.width}x{self.height}",
+                    "pixel_format": "mjpeg",  # or yuyv422
+                },
+            )
+            stream = container.streams.video[0]
+
+            for frame in container.decode(stream):
+                if not self.running:
+                    break
+
+                # Convert to numpy array immediately.
+                # We CANNOT share av.VideoFrame directly because aiortc modifies it.
+                frame_array = frame.to_ndarray(format="bgr24")
+
+                with self._lock:
+                    self.latest_frame_array = frame_array
+                    self.frame_id += 1
+
+                # Notify the asyncio loop that a new frame is ready
+                self._loop.call_soon_threadsafe(self._new_frame_event.set)
+
+        except Exception as e:
+            self.logger.error(f"[{self.device}] Capture loop error: {e}")
+        finally:
+            if container:
+                container.close()
+
+
+class SharedCameraTrack(VideoStreamTrack):
+    """
+    A lightweight proxy track created for EACH connected WebRTC client.
+    It reads from the global CameraBroadcaster.
+    """
 
     kind = "video"
 
-    def __init__(self, index: int, label: str, logger: logging.Logger, width: int, height: int):
+    def __init__(self, broadcaster: CameraBroadcaster):
         super().__init__()
-        self.index = index
-        self.label = label
-        self.logger = logger
-        self.device = f"/dev/video{index}"
-        self.container: Optional[av.container.InputContainer] = None
-        self.stream: Optional[av.stream.Stream] = None
+        self.broadcaster = broadcaster
+        self.last_frame_id = -1
 
-        self.WIDTH = width
-        self.HEIGHT = height
-
-        if not os.path.exists(self.device):
-            raise RuntimeError(f"{self.device} not found")
-
-    # --------------------------------------------------
-
-    def _open_device(self):
-        self._cleanup()
-        
-        self.container = av.open(
-            self.device,
-            format="v4l2",
-            options={
-                "video_size": f"{self.WIDTH}x{self.HEIGHT}",
-                "pixel_format": "mjpeg",  # Or 'yuyv422'
-            },
-        )
-        self.stream = self.container.streams.video[0]
-        self.logger.info(f"[{self.label}] Opened with PyAV")
-
-    # --------------------------------------------------
-    
     async def recv(self) -> av.VideoFrame:
-        if self.container is None or self.stream is None:
-            self._open_device()
+        # Wait until the broadcaster captures a NEW frame
+        while self.last_frame_id == self.broadcaster.frame_id:
+            await self.broadcaster._new_frame_event.wait()
+            self.broadcaster._new_frame_event.clear()
 
-        loop = asyncio.get_event_loop()
-        try:
-            
-            # Get next frame from the generator
-            # We use next() on the decode generator
-            if not self.container:
-                raise TypeError("Expected container")
-            frame = await loop.run_in_executor(None, lambda: next(self.container.decode(self.stream)))
+        # Safely grab the latest frame array
+        with self.broadcaster._lock:
+            frame_array = self.broadcaster.latest_frame_array
+            self.last_frame_id = self.broadcaster.frame_id
 
-            # Ensure the frame is a video frame
-            if not isinstance(frame, av.VideoFrame):
-                raise TypeError("Expected av.VideoFrame")
+        if frame_array is None:
+            raise ConnectionError("No frame available from broadcaster")
 
-            # Calculate timing
-            pts, time_base = await self.next_timestamp()
-            frame.pts = pts
-            frame.time_base = time_base
+        # Convert back to an av.VideoFrame for aiortc
+        new_frame = av.VideoFrame.from_ndarray(frame_array, format="bgr24")
 
-            return frame
-        except (StopIteration, Exception) as e:
-            self.logger.error(f"[{self.label}] Camera error: {e}")
-            self._cleanup()
-            raise ConnectionError("Camera stream failed")
+        # aiortc handles the timing math based on when next_timestamp() is called
+        pts, time_base = await self.next_timestamp()
+        new_frame.pts = pts
+        new_frame.time_base = time_base
 
-    # --------------------------------------------------
-
-    def _cleanup(self):
-        if self.container:
-            try:
-                self.container.close()
-            except Exception:
-                pass
-        self.container = None
-        self.stream = None
-
-    # --------------------------------------------------
-
-    def stop(self):
-        self._cleanup()
-        super().stop()
+        return new_frame

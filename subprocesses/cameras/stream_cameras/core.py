@@ -1,50 +1,44 @@
 import sys
 
-if sys.platform.startswith("win"):
-    from .stream_windows import OpenCVCameraTrack as PlatformCameraTrack
-elif sys.platform.startswith("linux"):
-    from .stream_linux import V4L2CameraTrack as PlatformCameraTrack
-else:
-    PlatformCameraTrack = None  # Unsupported
+
+from .stream_linux import CameraBroadcaster, SharedCameraTrack
+
+# Global dictionary to hold our running broadcasters
+ACTIVE_BROADCASTERS = {}
+
 
 async def stream_camera(camera, logger, width=640, height=480):
     """
-    Returns an instance of the platform-specific camera track.
+    Returns an instance of the proxy camera track for a client.
     'camera' is a dict with 'id' and 'label'
     """
-    if PlatformCameraTrack is None:
-        raise RuntimeError(f"Platform {sys.platform} is not supported")
+    device_id = camera["id"]
 
-    if sys.platform.startswith("win"):
-        return PlatformCameraTrack(camera["id"], camera["label"], width, height)
-    else:
-        return PlatformCameraTrack(camera["id"], camera["label"], logger, width, height)
+    # Check if the broadcaster is already running. If not, start it.
+    if device_id not in ACTIVE_BROADCASTERS:
+        if sys.platform.startswith("linux"):
+            device_path = f"/dev/video{device_id}"
+            broadcaster = CameraBroadcaster(device_path, width, height, logger)
+        # elif sys.platform.startswith("win"):
+        #     # You can build an identical WindowsBroadcaster using cv2.VideoCapture
+        #     # inside the _capture_loop instead of PyAV!
+        #     broadcaster = WindowsBroadcaster(device_id, width, height, logger)
+        else:
+            raise RuntimeError(f"Platform {sys.platform} is not supported")
 
-async def cleanup_camera(track, logger):
-    if track is None:
-        return
+        broadcaster.start()
+        ACTIVE_BROADCASTERS[device_id] = broadcaster
 
-    try:
-        # Windows OpenCV
-        if hasattr(track, "cap") and track.cap is not None:
-            track.cap.release()
-            track.cap = None
-            logger.debug(f"Released OpenCV camera {getattr(track, 'index', '?')}")
+    # Return a new lightweight proxy track for this specific client connection
+    return SharedCameraTrack(ACTIVE_BROADCASTERS[device_id])
 
-        # Linux MediaPlayer
-        if hasattr(track, "player") and track.player is not None:
-            # MediaPlayer.stop() is synchronous, but safe to await in async
-            if track.player.video:
-                track.player.video.stop()
-            if track.player.audio:
-                track.player.audio.stop()
 
-            track.player = None
-            logger.debug(f"Stopped MediaPlayer camera {getattr(track, 'index', '?')}")
-
-        # Ensure VideoStreamTrack cleanup
-        if hasattr(track, "stop"):
-            track.stop()
-
-    except Exception as e:
-        logger.warning(f"Failed to cleanup camera track: {e}")
+async def cleanup_camera(camera_id, logger):
+    """
+    Call this when you want to completely shut down the camera
+    (e.g., when the LAST client disconnects).
+    """
+    broadcaster = ACTIVE_BROADCASTERS.pop(camera_id, None)
+    if broadcaster:
+        broadcaster.stop()
+        logger.info(f"Released shared camera {camera_id}")

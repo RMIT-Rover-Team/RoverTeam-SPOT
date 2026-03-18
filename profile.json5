@@ -2,10 +2,10 @@
 {
     "name": "Equinox 2 SPOT",
     "processes": [
-        "canbus",
-        "telemetry",
+        // "canbus",
+        // "telemetry",
         "cameras",
-        "IMU"
+        // "IMU"
         // Manually start arm, excavator, or science depending on payload
         // "arm"
         // "excavator"
