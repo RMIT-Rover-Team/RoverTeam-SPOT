@@ -29,7 +29,7 @@ class ScienceTelemetry:
         }
     )
     sensors: dict[int, float] = field(
-        default_factory=float
+        default_factory=dict
     )
 
 
@@ -106,7 +106,7 @@ class ScienceManager:
         if channel_id < 0 or channel_id > 7:
             return
 
-        _, sensor_return = self.payload_master.RequestDatapoint(BoardID.SCIENCE, ScienceID.SENSOR, channel_id)
+        _, sensor_return = self.payload_master.RequestDataPoint(BoardID.SCIENCE, ScienceID.HEATER_SENSOR, channel_id)
 
         self.telemetry.sensors[channel_id] = sensor_return
 
