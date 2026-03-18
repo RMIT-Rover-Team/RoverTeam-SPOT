@@ -41,20 +41,8 @@ class ScienceManager:
         logger: Optional[logging.Logger] = None,
     ):
         self.payload_master = payload_master
-
         self.logger = logger
-        self.id = 12
-
         self.telemetry = ScienceTelemetry()
-
-        # validation
-        self._valid_cmd_ids = {
-            CommandID.ESTOP,
-            CommandID.TOGGLE, 
-            CommandID.SETSPEED,
-            CommandID.GETSPEED,
-        }
-
 
     # --- PUBLIC APIS ---
     def get_telemetry_data(self):
@@ -116,27 +104,6 @@ class ScienceManager:
 
     def get_stepper_steps(self, motor_id: int) -> int:
         return self.telemetry.stepper_motors[motor_id]
-
-    # --- Internal functions ---
-    # --- PARSING MSG
-    @staticmethod
-    def _parse_arbitration_id(arbitration_id: int) -> tuple[int, int]:
-        dest_id = (arbitration_id >> 6) & 0x3F
-        src_id = arbitration_id & 0x3F
-
-        return dest_id, src_id
-
-    def _parse_can_msg(
-        self, msg_id: int, data: bytes
-    ) -> tuple[int, int, int, int, int, float]:
-        dest_id, src_id = self._parse_arbitration_id(msg_id)
-        cmd_id = (data[0] >> 4) & 0x0F
-        stream_id = data[0] & 0x0F
-        channel_id = (data[1] >> 4) & 0x0F
-        return_value = struct.unpack_from("<f", data, 2)[0]
-        return dest_id, src_id, cmd_id, stream_id, channel_id, return_value
-
-    # --- MISC HELPERS
-    @staticmethod
-    def _build_arbitration_id(dest_id: int, src_id: int) -> int:
-        return ((dest_id & 0x3F) << 6) | (src_id & 0x3F)
+    
+    def get_sensor_telemetry(self, channel_id: int) -> float:
+        return self.telemetry.sensors[channel_id]
