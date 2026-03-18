@@ -20,6 +20,7 @@ class ScienceID(IntEnum):
     HEATER = 4
     PELTIER = 5
 
+
 class PDBID(IntEnum):
     SWITCH = BoardID.SWITCH
     BUCK1 = BoardID.BUCK1
@@ -30,6 +31,7 @@ class PDBID(IntEnum):
     def max_channels(self) -> int:
         """Returns the number of channels/cells allowed for this board."""
         return PDB_BOARD_LIMITS[self]
+
 
 class PDBChannelLength(IntEnum):
     SWITCH = 8
@@ -54,6 +56,7 @@ class PDBStreamID(IntEnum):
     VOLTAGE = 1
     POWER = 2
     TEMP = 3
+    TOGGLE = 4
 
 
 class CommandID(IntEnum):
@@ -81,6 +84,7 @@ class ChannelMetrics:
     current: float = 0.0
     power: float = 0.0
     temp: float = 0.0
+    toggle: bool = False
 
     def to_dict(self):
         return asdict(self)

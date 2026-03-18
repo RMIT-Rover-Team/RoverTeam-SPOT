@@ -3,7 +3,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from subprocesses.pdb.manager import PDBManager
-from sharedlib.models import PDBID
+from sharedlib.models import BoardID
 
 @pytest.fixture
 def manager():
@@ -43,8 +43,8 @@ def test_handle_switch_voltage(manager):
     manager.handle_can_message(msg_id, bytes(data))
 
     # 5. Assert
-    assert manager.boards[PDBID.SWITCH][5].metric_data.voltage == pytest.approx(12.5)
-    assert manager.boards[PDBID.SWITCH][5].metric_data.current == 0.0  # Ensure other fields aren't touched
+    assert manager.boards[BoardID.SWITCH][5].metric_data.voltage == pytest.approx(12.5)
+    assert manager.boards[BoardID.SWITCH][5].metric_data.current == 0.0  # Ensure other fields aren't touched
 
 
 def test_handle_bms_list(manager):
@@ -59,7 +59,7 @@ def test_handle_bms_list(manager):
 
     manager.handle_can_message(msg_id, bytes(data))
 
-    assert manager.boards[PDBID.BMS][11].metric_data == pytest.approx(3.99)
+    assert manager.boards[BoardID.BMS][11].metric_data == pytest.approx(3.99)
 
 
 def test_malformed_data_safety(manager):
