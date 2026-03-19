@@ -75,7 +75,7 @@ async def pdb_websocket_loop(pdb: PDBManager, interval: float = 1.0) -> None:
         logger.error(f"Sending PDB Telemetry Data ran into an error: {e}")
         request_shutdown()  # request shutdown to restart
 
-
+    
 async def pdb_can_loop(pdb: PDBManager, interval: float = 1.0) -> None:
     """
     Sends a request for PDB data from pdb manager to update it.

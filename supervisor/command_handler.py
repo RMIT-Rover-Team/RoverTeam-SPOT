@@ -62,6 +62,13 @@ class CommandHandler:
             return
 
         # --------------------------------------------------------
+        # status (show all subsystems' status)
+        # --------------------------------------------------------
+        if command == "status":
+            await self._status()
+            return
+
+        # --------------------------------------------------------
         # restart-all
         # --------------------------------------------------------
         if command == "restart-all":
@@ -89,6 +96,7 @@ class CommandHandler:
         """
         help_msg = """
 Available commands:
+status                   - List processes and show status
 start <process>          - Start a subsystem
 stop <process>           - Stop a subsystem
 restart <process>        - Restart a subsystem
@@ -184,6 +192,22 @@ Notes:
         except Exception as e:
             self._reply(f"Failed to start {name}: {e}", level="ERROR")
 
+    async def _status(self):
+        """
+        Minimal status: RUNNING / STOPPED only.
+        Color-coded via log level.
+        """
+        self._reply("  Subprocesses:", level="INFO")
+
+        for name, sub in self.supervisor.subsystems.items():
+            running = (
+                sub.process is not None and sub.process.returncode is None
+            )
+
+            if running:
+                self._reply(f"    {name} - RUNNING", level="SUCCESS")
+            else:
+                self._reply(f"    {name} - STOPPED", level="ERROR")
 
     async def _handle_restart_all_confirmation(self, args: List[str]):
         self._restart_all_confirmation = False
