@@ -117,8 +117,14 @@ async def main(
     # SIGNAL HANDLERS
     # -------------------------
     loop = asyncio.get_running_loop()
-    loop.add_signal_handler(signal.SIGINT, request_shutdown)
-    loop.add_signal_handler(signal.SIGTERM, request_shutdown)
+    
+    if not dev:
+        loop.add_signal_handler(signal.SIGINT, request_shutdown)
+        loop.add_signal_handler(signal.SIGTERM, request_shutdown)
+    else:
+        # Windows / dev fallback
+        signal.signal(signal.SIGINT, lambda *_: request_shutdown())
+        signal.signal(signal.SIGTERM, lambda *_: request_shutdown())
 
     # -------------------------
     # CAN CLIENT
