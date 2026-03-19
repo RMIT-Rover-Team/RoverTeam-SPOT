@@ -3,7 +3,7 @@
     "name": "Equinox 2 SPOT",
     "processes": [
         // "canbus",
-        // "telemetry",
+        "telemetry", // Please don't remove this!
         "cameras",
         // "IMU"
         // Manually start arm, excavator, or science depending on payload
