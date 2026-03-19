@@ -6,7 +6,7 @@ import dataclasses
 
 
 class BoardID(IntEnum):
-    SCIENCE = 0xC
+    SCIENCE = 0xB
     SWITCH = 0xA
     BUCK1 = 0x06
     BUCK2 = 0x07
