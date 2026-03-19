@@ -2,15 +2,21 @@ import os
 import asyncio
 import threading
 import logging
+import sys
 import time
-import numpy as np
+import fractions
 import av
 from aiortc import VideoStreamTrack
 
+
+# Global dictionary to hold our running broadcasters
+ACTIVE_BROADCASTERS = {}
+
+
 class CameraBroadcaster:
     """
-    Reads from the camera in a dedicated background thread to prevent buffer bloat.
-    Does ZERO heavy processing to ensure the camera buffer stays completely empty.
+    Reads from the camera in a dedicated background thread.
+    Grabs frames as fast as possible to keep the hardware buffer completely empty.
     """
 
     def __init__(self, device: str, width: int, height: int, logger: logging.Logger):
@@ -23,7 +29,7 @@ class CameraBroadcaster:
         self.frame_id = 0
 
         self.clients = 0
-        self.client_events = set()  # Individual events for each connected track
+        self.client_events = set()
 
         self.running = False
         self.error = False
@@ -48,7 +54,6 @@ class CameraBroadcaster:
         self.logger.info(f"[{self.device}] Broadcaster thread stopped.")
 
     def _wake_all_clients(self):
-        """Safely triggers all client events to wake them up."""
         with self._lock:
             events = list(self.client_events)
         for e in events:
@@ -108,46 +113,48 @@ class SharedCameraTrack(VideoStreamTrack):
         super().__init__()
         self.broadcaster = broadcaster
         self.last_frame_id = -1
+        self._start_time = None
 
-        # Give this track its own dedicated event to prevent race conditions
+        # Dedicated event to prevent race conditions between multiple viewers
         self._new_frame_event = asyncio.Event()
         with self.broadcaster._lock:
             self.broadcaster.client_events.add(self._new_frame_event)
 
     def stop(self):
         super().stop()
-        # Clean up event when track stops
         with self.broadcaster._lock:
             self.broadcaster.client_events.discard(self._new_frame_event)
 
     async def recv(self) -> av.VideoFrame:
-        # Wait until the broadcaster captures a NEW frame
-        while self.last_frame_id == self.broadcaster.frame_id:
-            if not self.broadcaster.running or self.broadcaster.error:
-                raise ConnectionError("Camera stream failed or was unplugged")
-
-            await self._new_frame_event.wait()
+        # If we already processed the latest frame, wait for the next one.
+        # If we are behind (dropped frames), skip the wait to catch up instantly.
+        if self.last_frame_id == self.broadcaster.frame_id:
             self._new_frame_event.clear()
+            await self._new_frame_event.wait()
 
-        # Safely grab the latest PyAV frame
         with self.broadcaster._lock:
             if not self.broadcaster.running or self.broadcaster.error:
                 raise ConnectionError("Camera stream failed or was unplugged")
-
             frame = self.broadcaster.latest_frame
             self.last_frame_id = self.broadcaster.frame_id
 
         if frame is None:
             raise ConnectionError("No frame available from broadcaster")
 
-        # Convert to YUV420P natively. This is insanely fast, isolates the object
-        # so aiortc doesn't accidentally share 'pts' between viewers, and
-        # is the exact format WebRTC mandates anyway.
+        # Convert to WebRTC's native format
         new_frame = frame.reformat(format="yuv420p")
 
-        # aiortc handles the timing math
-        pts, time_base = await self.next_timestamp()
-        new_frame.pts = pts
-        new_frame.time_base = time_base
+        # THE FIX: Generate True Real-Time Timestamps.
+        # This completely overrides aiortc's pacing and forces the WebRTC
+        # browser player to display the frame exactly as it was captured,
+        # eliminating all snapping and lagging.
+        if self._start_time is None:
+            self._start_time = time.monotonic()
+
+        # WebRTC uses a 90kHz clock for video timestamps
+        timestamp = int((time.monotonic() - self._start_time) * 90000)
+
+        new_frame.pts = timestamp
+        new_frame.time_base = fractions.Fraction(1, 90000)
 
         return new_frame

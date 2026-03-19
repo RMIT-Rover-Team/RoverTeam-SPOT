@@ -8,9 +8,6 @@ ACTIVE_BROADCASTERS = {}
 
 
 async def stream_camera(camera, logger, width=640, height=480):
-    """
-    Returns an instance of the proxy camera track for a client.
-    """
     device_id = camera["id"]
 
     # If the broadcaster is physically dead, clear it out
@@ -39,9 +36,6 @@ async def stream_camera(camera, logger, width=640, height=480):
 
 
 async def cleanup_camera(track, logger):
-    """
-    Lowers the client count, and stops the physical device if 0 viewers remain.
-    """
     if not track:
         return
 
@@ -54,7 +48,6 @@ async def cleanup_camera(track, logger):
         if broadcaster.clients <= 0:
             broadcaster.stop()
 
-            # Wipe from global dict so it starts fresh next time
             keys_to_delete = [
                 k for k, v in ACTIVE_BROADCASTERS.items() if v == broadcaster
             ]
@@ -63,6 +56,5 @@ async def cleanup_camera(track, logger):
 
             logger.info(f"Released shared camera {broadcaster.device}")
 
-    # Stop the WebRTC layer
     if hasattr(track, "stop"):
         track.stop()
