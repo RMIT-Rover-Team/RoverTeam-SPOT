@@ -9,7 +9,8 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import PlainTextResponse
 
-from sharedlib.models import ScienceID
+from sharedlib.models import ScienceID, BoardID
+from sharedlib.canbus.client import CANClient
 from sharedlib.payloadControl import pyRover
 from subprocesses.science.manager import ScienceManager
 
@@ -187,8 +188,13 @@ async def main(
     # -------------------------
     # CAN setup
     # -------------------------
+    can_client = CANClient()
+    await can_client.start()
+
+
     science_master = pyRover.PyRover("can0", 0)
-    science = ScienceManager(science_master, logger)
+    science = ScienceManager(can_client, science_master, logger)
+    science.register(BoardID.SCIENCE)
 
     # -------------------------
     # Websocket

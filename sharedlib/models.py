@@ -14,9 +14,9 @@ class BoardID(IntEnum):
 
 class ScienceID(IntEnum):
     DRILL = 0
-    AUGER = 1
+    MICROSCOPE_SWIVEL = 1
     MICROSCOPE = 2
-    MICROSCOPE_SWIVEL = 3
+    AUGER = 3
     HEATER = 4
     PELTIER = 5
     HEATER_SENSOR = 4
@@ -55,7 +55,7 @@ class PDBStreamID(IntEnum):
     VOLTAGE = 1
     POWER = 2
     TEMP = 3
-
+    TOGGLE = 4
 
 class CommandID(IntEnum):
     ESTOP = 0x00
