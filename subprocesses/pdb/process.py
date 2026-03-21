@@ -134,6 +134,9 @@ async def toggle_buck1(channel: int, enable: int):
     is_on = True if enable == 1 else False
 
     await pdb.toggle_channel(PDBID.BUCK1, channel, is_on)
+
+    logger.info(f"COMMAND: Buck Board 1 | Channel: {channel} | State: {is_on}")
+
     return {"message": f"Buck 1 channel {'enabled' if enable else 'disabled'}"}
 
 
@@ -145,6 +148,9 @@ async def toggle_buck2(channel: int, enable: int):
     is_on = True if enable == 1 else False
 
     await pdb.toggle_channel(PDBID.BUCK2, channel, is_on)
+
+    logger.info(f"COMMAND: Buck Board 2 | Channel: {channel} | State: {is_on}")
+
     return {"message": "Buck 2 updated"}
 
 
