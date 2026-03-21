@@ -1,0 +1,9 @@
+{
+    "name": "spectrometer",
+    "priority": 50,
+    "args": {
+        "--port": "COM8",
+        "--baudrate": 115200,
+        "--ws_port": 5004
+    }
+}
