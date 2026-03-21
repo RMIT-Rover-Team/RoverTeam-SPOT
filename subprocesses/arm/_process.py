@@ -113,7 +113,7 @@ async def telemetry_loop(interval: float):
 async def heartbeat_loop(interval: float):
     while True:
         # Could be used for simple logging/debug
-        print("HEARTBEAT")
+        print("HEARTBEAT", flush=True)
         await asyncio.sleep(interval)
 
 # -------------------------

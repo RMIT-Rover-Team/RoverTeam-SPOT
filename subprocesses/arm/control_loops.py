@@ -143,7 +143,7 @@ async def control_loop(
 # ---------------------------------------------------------
 async def heartbeat_loop(shutdown_event, interval: float):
     while not shutdown_event.is_set():
-        print("HEARTBEAT")
+        print("HEARTBEAT", flush=True)
         await asyncio.sleep(interval)
 
 

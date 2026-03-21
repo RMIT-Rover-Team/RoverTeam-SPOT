@@ -76,7 +76,7 @@ async def telemetry_loop(control_socket: ControlSocket, interval: float):
 # -------------------------
 async def heartbeat_loop(interval: float):
     while True:
-        print("HEARTBEAT")
+        print("HEARTBEAT", flush=True)
         await asyncio.sleep(interval)
 
 # -------------------------

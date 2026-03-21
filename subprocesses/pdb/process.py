@@ -49,7 +49,7 @@ async def heartbeat_loop(interval: float):
         interval -- interval in seconds
     """
     while not shutdown_event.is_set():
-        print("HEARTBEAT")
+        print("HEARTBEAT", flush=True)
         await asyncio.sleep(interval)
 
 

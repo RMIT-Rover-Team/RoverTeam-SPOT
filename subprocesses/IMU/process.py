@@ -52,7 +52,7 @@ async def receive_loop(sub_socket):
 
 async def heartbeat_loop(interval: float):
     while True:
-        print("HEARTBEAT")
+        print("HEARTBEAT", flush=True)
         await asyncio.sleep(interval)
 
 
