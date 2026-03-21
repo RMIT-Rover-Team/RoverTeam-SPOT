@@ -5,7 +5,8 @@
         // "canbus",
         "telemetry", // Please don't remove this!
         "cameras",
-        "science",
+        // "science",
+        // "pdb",
         // "IMU"
         // Manually start arm, excavator, or science depending on payload
         // "arm"

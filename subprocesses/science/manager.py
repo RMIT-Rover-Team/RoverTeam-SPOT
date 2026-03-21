@@ -111,7 +111,8 @@ class ScienceManager:
     async def set_heatpad_toggle(self, toggle: bool):
         toggle_bit = 1 if toggle else 0
         self.payload_master.ToggleState(BoardID.SCIENCE, ScienceID.HEATER, toggle_bit)
-
+        self.telemetry.temp_state[ScienceID.HEATER] = toggle
+        
     async def refresh_drill_telemetry(self):
         _, speed = self.payload_master.GetMotorSpeed(BoardID.SCIENCE, ScienceID.DRILL)
         self.telemetry.drill = int(speed)
@@ -128,7 +129,9 @@ class ScienceManager:
         if channel_id < 0 or channel_id > 7:
             return
 
-        _, sensor_return = self.payload_master.RequestDataPoint(BoardID.SCIENCE, ScienceID.HEATER_SENSOR, channel_id)
+        _, sensor_return = self.payload_master.RequestDataPoint(
+            BoardID.SCIENCE, 2, ScienceID.HEATER_SENSOR
+        )
 
         self.telemetry.sensors[channel_id] = sensor_return
 
