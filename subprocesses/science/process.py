@@ -9,7 +9,8 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import PlainTextResponse
 
-from sharedlib.models import ScienceID
+from sharedlib.models import ScienceID, BoardID
+from sharedlib.canbus.client import CANClient
 from sharedlib.payloadControl import pyRover
 from subprocesses.science.manager import ScienceManager
 
@@ -130,9 +131,9 @@ async def set_stepper_steps(motor_id: int, steps: int):
 @app.post("/heatpad/{toggle}")
 async def set_heatpad_toggle(toggle: int):
     heatpad_status = True if toggle == 1 else False
-
     
     await science.set_heatpad_toggle(heatpad_status)
+    return {"message": f"Set headpad status to {heatpad_status}"}
 
 @app.post("/science/can/polling/{interval}")
 async def change_can_interval(interval: float):
@@ -143,7 +144,6 @@ async def change_can_interval(interval: float):
     polling_intervals["can"] = interval
 
     logger.info(f"Changed can interval to {polling_intervals['can']}")
-
     return {"message": f"CAN polling rate set to {interval}"}
 
 
@@ -156,7 +156,6 @@ async def change_websocket_interval(interval: float):
     polling_intervals["websocket"] = interval
 
     logger.info(f"Changed can interval to {polling_intervals['websocket']}")
-
     return {"message": f"Websocket polling rate set to {interval}"}
 
 
@@ -187,8 +186,13 @@ async def main(
     # -------------------------
     # CAN setup
     # -------------------------
+    can_client = CANClient()
+    await can_client.start()
+
+
     science_master = pyRover.PyRover("can0", 0)
-    science = ScienceManager(science_master, logger)
+    science = ScienceManager(can_client, science_master, logger)
+    science.register(BoardID.SCIENCE)
 
     # -------------------------
     # Websocket

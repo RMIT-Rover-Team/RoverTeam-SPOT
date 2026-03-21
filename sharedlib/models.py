@@ -6,7 +6,7 @@ import dataclasses
 
 
 class BoardID(IntEnum):
-    SCIENCE = 0xC
+    SCIENCE = 0xB
     SWITCH = 0xA
     BUCK1 = 0x06
     BUCK2 = 0x07
@@ -14,9 +14,9 @@ class BoardID(IntEnum):
 
 class ScienceID(IntEnum):
     DRILL = 0
-    AUGER = 1
+    MICROSCOPE_SWIVEL = 1
     MICROSCOPE = 2
-    MICROSCOPE_SWIVEL = 3
+    AUGER = 3
     HEATER = 4
     PELTIER = 5
     HEATER_SENSOR = 4
