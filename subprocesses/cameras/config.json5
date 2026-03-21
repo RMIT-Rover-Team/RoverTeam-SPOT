@@ -4,6 +4,11 @@
     "args": {
         "--webrtc_host": "0.0.0.0",
         "--webrtc_port": "3001",
+        "--camera": [
+            "0:Camera 0",
+            "2:Camera 2",
+            "4:Camera 4"
+        ],
         "--ignore_cameras": [
             // Raspberry Pi Default stuff
             "bcm2835-*",
@@ -11,7 +16,7 @@
 
             // My computer has some odd interfaces installed:
             "Game Capture HD60 Pro",
-            "Meta Quest *",
+            "Meta Quest *"
         ]
     }
 }  

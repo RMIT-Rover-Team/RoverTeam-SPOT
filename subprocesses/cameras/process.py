@@ -45,6 +45,7 @@ ZMQ_RECEIVE = False # No need to receive ZMQ commands in this process
 pcs = set()
 players = {}
 ignore_list = []
+hardcoded_cameras = [0, 2, 4]
 
 # -------------------------
 # ZMQ RECEIVE LOOP
@@ -70,7 +71,10 @@ async def heartbeat_loop(interval: float):
 # HTTP HANDLERS
 # -------------------------
 async def handle_cameras(request):
-    cameras = scan(ignore_list, logger)
+    if hardcoded_cameras:
+        cameras = hardcoded_cameras
+    else:
+        cameras = scan(ignore_list, logger)
     return web.json_response({"cameras":cameras})
 
 
@@ -81,7 +85,10 @@ async def handle_offer(request):
     params = await request.json()
     camera_id = int(params.get("camera_id", 0))
 
-    cameras = scan(ignore_list, logger)
+    if hardcoded_cameras:
+        cameras = hardcoded_cameras
+    else:
+        cameras = scan(ignore_list, logger)
     camera = next((c for c in cameras if c["id"] == camera_id), None)
     if camera is None:
         return web.Response(status=404, text="Camera not found")
@@ -261,8 +268,18 @@ if __name__ == "__main__":
     parser.add_argument("--webrtc_host", type=str, default="0.0.0.0")
     parser.add_argument("--webrtc_port", type=int, default=3002)
     parser.add_argument("--ignore_cameras",action="append",default=[])
+    parser.add_argument("--camera", action="append", default=[])
     args = parser.parse_args()
     ignore_list = args.ignore_cameras
+
+    for cam_str in args.camera:
+        parts = cam_str.split(":", 1)
+        try:
+            cam_id = int(parts[0])
+            label = parts[1] if len(parts) > 1 else f"Camera {cam_id}"
+            hardcoded_cameras.append({"id": cam_id, "label": label})
+        except ValueError:
+            logger.error(f"Invalid hardcoded camera format: {cam_str}")
 
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
