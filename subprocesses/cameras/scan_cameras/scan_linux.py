@@ -23,6 +23,9 @@ def scan_linux(ignore_list=None, logger=None):
         return []
 
     for entry in sorted(os.listdir(v4l_path)):
+        if not entry.startswith("video"):
+            continue
+
         # entry is e.g., video0, video1
         dev_path = os.path.join(video_path, entry)
         sys_entry = os.path.join(v4l_path, entry)
