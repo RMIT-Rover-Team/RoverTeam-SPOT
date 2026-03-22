@@ -125,16 +125,14 @@ class ScienceManager:
         self.telemetry.stepper_motors[motor_id] = int(speed)
 
     async def refresh_sensor_telemetry(self, channel_id: int):
-        # if channel_id < 0 or channel_id > 7:
-        #     return
+        if channel_id < 0 or channel_id > 7:
+            return
 
-        # _, sensor_return = self.payload_master.RequestDataPoint(
-        #     BoardID.SCIENCE, 2, ScienceID.HEATER_SENSOR
-        #     # BoardID.BUCK2, 1, 0
-        # )
-        # # self.logger.info(sensor_return)
-        # self.telemetry.sensors[channel_id] = sensor_return
-        pass
+        _, sensor_return = self.payload_master.RequestDataPoint(
+            BoardID.SCIENCE, 2, channel_id
+        )
+        self.telemetry.sensors[channel_id] = sensor_return
+        
 
     # def get_drill_speed(self) -> int:
     #     return self.telemetry.drill

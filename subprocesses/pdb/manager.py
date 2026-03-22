@@ -6,7 +6,14 @@ from typing import List, Optional, Union
 
 from sharedlib.payloadControl import pyRover
 
-from sharedlib.models import PDBID, PDBStreamID, ChannelMetrics, CommandID, TelemetryState
+from sharedlib.models import (
+    PDBID,
+    PDBStreamID,
+    ChannelMetrics,
+    CommandID,
+    TelemetryState,
+    PDB_ATTRIBUTE_MULTIPLIERS,
+)
 
 # imu 4
 
@@ -35,16 +42,17 @@ class PDBManager:
     # --- PUBLIC APIS ---
     def _serialize_item(self, obj):
         if dataclasses.is_dataclass(obj):
-            # We convert to dict first, then recurse to catch Enums inside
-            return {k: self._serialize_item(v) for k, v in dataclasses.asdict(obj).items()}
+            # Convert to dict; asdict() handles nested dataclasses automatically
+            # We then loop through to catch Enums
+            data = dataclasses.asdict(obj)
+            return {k: self._serialize_item(v) for k, v in data.items()}
         elif isinstance(obj, Enum):
-            return obj.name  # or obj.value depending on your preference
-        elif isinstance(obj, list):
+            return obj.name
+        elif isinstance(obj, (list, tuple)):
             return [self._serialize_item(i) for i in obj]
         elif isinstance(obj, dict):
             return {k: self._serialize_item(v) for k, v in obj.items()}
-        else:
-            return obj
+        return obj
     
     def get_pending_data(self) -> dict:
         pending_data_list = {}
@@ -61,7 +69,7 @@ class PDBManager:
                     
                     state.pending_send = False 
 
-            return pending_data_list
+        return pending_data_list
 
     async def request_pdb_data(self):
         for board in PDBID:
@@ -90,15 +98,33 @@ class PDBManager:
             state[channel_id].pending_send = True
 
         else:
-            for  attr in PDBStreamID:
-                _, returned_value = self.pdb_master.RequestDataPoint(
-                    board.value, attr.value, channel_id
-                )
+            for attr in PDBStreamID:
                 target_channel = state[channel_id].metric_data
                 stream_name = self._get_stream(attr)
 
-                # update stored values                
-                setattr(target_channel, stream_name, returned_value)
+                if attr == PDBStreamID.POWER: # if attribute is power, calculate power differently                  
+                    voltage_name = self._get_stream(PDBStreamID.VOLTAGE)
+                    current_name = self._get_stream(PDBStreamID.CURRENT)
+
+                    voltage_value = getattr(target_channel, voltage_name)
+                    current_value = getattr(target_channel, current_name)
+
+                    setattr(
+                        target_channel,
+                        stream_name,
+                        voltage_value * current_value
+                    )                    
+                else:  # else if not power, just calculate normally
+                    _, returned_value = self.pdb_master.RequestDataPoint(
+                        board.value, attr.value, channel_id
+                    )
+                    setattr(
+                        target_channel,
+                        stream_name,
+                        self._convert_raw_value(channel_id, returned_value),
+                    )
+                # update stored values
+               
                 state[channel_id].last_updated = datetime.datetime.now()
                 state[channel_id].pending_send = True
 
@@ -127,3 +153,7 @@ class PDBManager:
             PDBStreamID.TOGGLE.value: "toggle",
         }
         return stream_map.get(stream_id, "")
+
+    @staticmethod
+    def _convert_raw_value(channel_id: Union[PDBStreamID, int], raw_value: float):
+        return raw_value * PDB_ATTRIBUTE_MULTIPLIERS[PDBStreamID(channel_id)]

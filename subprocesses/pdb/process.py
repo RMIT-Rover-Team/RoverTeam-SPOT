@@ -3,8 +3,10 @@ import asyncio
 import json
 import logging
 import signal
+from datetime import datetime
 
 import uvicorn
+from export_csv import write_boards_to_csv
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import PlainTextResponse
@@ -41,6 +43,9 @@ pdb: PDBManager
 shutdown_event = asyncio.Event()
 
 polling_intervals = {"websocket": 1.0, "can": 1.0}
+
+session_time = datetime.now().strftime("%Y%m%d-%H%M%S")
+LOG_FILE = f"telemetry_{session_time}.csv"
 
 async def heartbeat_loop(interval: float):
     """
@@ -85,10 +90,11 @@ async def pdb_can_loop(pdb: PDBManager, interval: float = 1.0) -> None:
         logger.info(f"PDB: Starting sequenced polling (step: {interval}s)")
         polling_intervals["can"] = interval
         while not shutdown_event.is_set():
-            # for board in PDBID:
-            await pdb.request_board_data(PDBID.BUCK2)
-            await asyncio.sleep(polling_intervals["can"])
+            for board in PDBID:
+                await pdb.request_board_data(board)
+                await asyncio.sleep(polling_intervals["can"])
 
+                write_boards_to_csv(pdb.boards, LOG_FILE)
             if shutdown_event.is_set():
                 break
     except asyncio.CancelledError:
