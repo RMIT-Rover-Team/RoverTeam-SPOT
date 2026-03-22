@@ -89,7 +89,7 @@ class PDBManager:
 
         if board == PDBID.BMS:
             _, returned_value = self.pdb_master.RequestDataPoint(
-                board.value, channel_id, 0
+                board.value, 0, channel_id
             )
 
             # update stored values
