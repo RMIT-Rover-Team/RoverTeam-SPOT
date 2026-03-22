@@ -176,7 +176,7 @@ async def webrtc_server_task(host: str, port: int):
     site = web.TCPSite(runner, host, port)
     await site.start()
 
-    logger.warning(f"WebRTC camera server listening on {host}:{port}")
+    logger.info(f"WebRTC camera server listening on {host}:{port}")
 
     try:
         while True:
@@ -209,7 +209,7 @@ async def main(heartbeat_interval: float, sub_url: str, host: str, port: int):
     await site.start()
 
     logging.getLogger("aiohttp.access").setLevel(logging.WARNING)
-    logger.warning(f"WebRTC camera server listening on {host}:{port}")
+    logger.info(f"WebRTC camera server listening on {host}:{port}")
 
     # Tasks
     tasks = [

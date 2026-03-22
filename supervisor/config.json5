@@ -1,0 +1,14 @@
+{
+  // TCP port for interprocess ZMQ communication
+  PORT_INTERPROCESS: 5555,
+
+  // Heartbeat settings (seconds)
+  HEARTBEAT_INTERVAL: 10.0,
+  HEARTBEAT_TIMEOUT: 20.0,
+
+  // Delay before restarting a subsystem after failure
+  RESTART_DELAY: 2.0,
+
+  // How often the monitor checks subsystem status
+  MONITOR_INTERVAL: 5.0
+}

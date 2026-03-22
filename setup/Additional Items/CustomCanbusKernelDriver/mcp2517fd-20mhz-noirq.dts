@@ -1,0 +1,62 @@
+/dts-v1/;
+/plugin/;
+
+
+/ {
+    compatible = "brcm,bcm2835";
+
+    /* Disable default spidev on SPI0 CS0 */
+    fragment@0 {
+        target = <&spidev0>;
+        __overlay__ {
+            status = "disabled";
+        };
+    };
+
+    /* Define external 20 MHz oscillator */
+    fragment@1 {
+        target-path = "/clocks";
+        __overlay__ {
+            mcp2518fd_osc: mcp2518fd_osc {
+                compatible = "fixed-clock";
+                #clock-cells = <0>;
+                clock-frequency = <20000000>; /* 20 MHz crystal */
+            };
+        };
+    };
+
+    /* Configure interrupt pin (GPIO25) with pull-up */
+    fragment@2 {
+        target = <&gpio>;
+        __overlay__ {
+            mcp2518fd_int_pins: mcp2518fd_int_pins {
+                brcm,pins = <25>;       /* BCM GPIO25 */
+                brcm,function = <0>;    /* 0 = input */
+                brcm,pull = <2>;        /* 2 = pull-up */
+            };
+        };
+    };
+
+    /* Configure MCP2518FD on SPI0 CS0 with IRQ on GPIO25 */
+    fragment@3 {
+        target = <&spi0>;
+        __overlay__ {
+            #address-cells = <1>;
+            #size-cells = <0>;
+            status = "okay";
+
+            can0: can@0 {
+                compatible = "microchip,mcp2518fd";
+                reg = <0>;                      /* CS0 */
+                pinctrl-names = "default";
+                pinctrl-0 = <&mcp2518fd_int_pins>;
+                spi-max-frequency = <10000000>; /* safe SPI speed */
+                clocks = <&mcp2518fd_osc>;
+                interrupt-parent = <&gpio>;
+                interrupts = <25 0>; /* GPIO25, active low */
+                status = "okay";
+            };
+        };
+    };
+};
+

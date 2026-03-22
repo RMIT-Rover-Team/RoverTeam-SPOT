@@ -9,9 +9,9 @@ import subprocess
 class CANBus:
     def __init__(self, channel="can0", bustype="socketcan"):
         try:
-            # Just incase we try to load it up
-            subprocess.run(["sudo", "ip", "link", "set", "can0", "down"])
-            subprocess.run(["sudo", "ip", "link", "set", "can0", "up", "type", "can", "bitrate", "125000"])
+            # This should not be used - instead use the systemd-networkd configuration to set up the CAN interface at boot
+            # subprocess.run(["sudo", "ip", "link", "set", "can0", "down"])
+            # subprocess.run(["sudo", "ip", "link", "set", "can0", "up", "type", "can", "bitrate", "125000"])
 
             self.bus = can.interface.Bus(
                 channel=channel,

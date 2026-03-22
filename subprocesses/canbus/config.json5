@@ -1,0 +1,14 @@
+{
+  // Subprocess name
+  "name": "canbus",
+  // Priority:
+  // LOWER numbers have HIGHER priority
+  "priority": 0,
+  // Command-line args default values
+  "args": {
+    "--can_channel": "vcan0",
+    "--can_type": "socketcan",
+    "--pub_port": 5556,
+    "--rep_port": 5557
+  }
+}
