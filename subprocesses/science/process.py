@@ -89,8 +89,8 @@ async def science_can_loop(science: ScienceManager, interval: float = 1.0) -> No
     try:
         while not shutdown_event.is_set():
             await science.refresh_drill_telemetry()
-            [await science.refresh_stepper_telemetry(s_id) for s_id in stepper_ids]
-            await science.refresh_sensor_telemetry(ScienceID.HEATER_SENSOR)
+            # [await science.refresh_stepper_telemetry(s_id) for s_id in stepper_ids]
+            # await science.refresh_sensor_telemetry(ScienceID.HEATER_SENSOR)
     
             await asyncio.sleep(polling_intervals["can"])
     except Exception as e:

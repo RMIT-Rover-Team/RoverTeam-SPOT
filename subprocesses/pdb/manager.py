@@ -1,6 +1,7 @@
 import datetime
 import logging
 from dataclasses import asdict
+import dataclasses
 from typing import List, Optional, Union
 
 from sharedlib.payloadControl import pyRover
@@ -32,6 +33,19 @@ class PDBManager:
              
                 
     # --- PUBLIC APIS ---
+    def _serialize_item(self, obj):
+        if dataclasses.is_dataclass(obj):
+            # We convert to dict first, then recurse to catch Enums inside
+            return {k: self._serialize_item(v) for k, v in dataclasses.asdict(obj).items()}
+        elif isinstance(obj, Enum):
+            return obj.name  # or obj.value depending on your preference
+        elif isinstance(obj, list):
+            return [self._serialize_item(i) for i in obj]
+        elif isinstance(obj, dict):
+            return {k: self._serialize_item(v) for k, v in obj.items()}
+        else:
+            return obj
+    
     def get_pending_data(self) -> dict:
         pending_data_list = {}
         for board, channels in self.boards.items():
@@ -42,16 +56,12 @@ class PDBManager:
                     if board_key not in pending_data_list:
                         pending_data_list[board_key] = {}
                     
-                    # Convert Dataclass to Dict and Enum to String
-                    if isinstance(state.metric_data, ChannelMetrics):
-                        pending_data_list[board_key][channel_idx] = asdict(state.metric_data)
-                    else:
-                        # For BMS which is just a float
-                        pending_data_list[board_key][channel_idx] = state.metric_data
+                    # Use the recursive helper here
+                    pending_data_list[board_key][channel_idx] = self._serialize_item(state.metric_data)
                     
-                    state.pending_send = False # Reset flag
+                    state.pending_send = False 
 
-        return pending_data_list
+            return pending_data_list
 
     async def request_pdb_data(self):
         for board in PDBID:

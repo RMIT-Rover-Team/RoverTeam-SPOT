@@ -69,7 +69,6 @@ async def pdb_websocket_loop(pdb: PDBManager, interval: float = 1.0) -> None:
             if data:
                 msg = json.dumps({"type": "pdb_data", "data": data})
                 print(f"JSON {msg}")  # send data over to pdb
-
             await asyncio.sleep(polling_intervals["websocket"])
     except Exception as e:
         logger.error(f"Sending PDB Telemetry Data ran into an error: {e}")
@@ -86,12 +85,12 @@ async def pdb_can_loop(pdb: PDBManager, interval: float = 1.0) -> None:
         logger.info(f"PDB: Starting sequenced polling (step: {interval}s)")
         polling_intervals["can"] = interval
         while not shutdown_event.is_set():
-            for board in PDBID:
-                await pdb.request_board_data(board)
-                await asyncio.sleep(polling_intervals["can"])
+            # for board in PDBID:
+            await pdb.request_board_data(PDBID.BUCK2)
+            await asyncio.sleep(polling_intervals["can"])
 
-                if shutdown_event.is_set():
-                    break
+            if shutdown_event.is_set():
+                break
     except asyncio.CancelledError:
         pass
     except Exception as e:
