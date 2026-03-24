@@ -32,7 +32,9 @@ async def stream_camera(camera, logger, width=640, height=480):
     broadcaster = ACTIVE_BROADCASTERS[device_id]
     broadcaster.clients += 1
 
-    return SharedCameraTrack(broadcaster)
+    track = SharedCameraTrack(broadcaster)
+    track.device_id = device_id
+    return track
 
 
 async def cleanup_camera(track, logger):

@@ -3,8 +3,10 @@ import asyncio
 import json
 import logging
 import signal
+from datetime import datetime
 
 import uvicorn
+from export_csv import write_boards_to_csv
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import PlainTextResponse
@@ -42,6 +44,9 @@ shutdown_event = asyncio.Event()
 
 polling_intervals = {"websocket": 1.0, "can": 1.0}
 
+session_time = datetime.now().strftime("%Y%m%d-%H%M%S")
+LOG_FILE = f"telemetry_{session_time}.csv"
+
 async def heartbeat_loop(interval: float):
     """
     Sends a heartbeat to the main supervisor to say the subprocess is alive.
@@ -69,7 +74,6 @@ async def pdb_websocket_loop(pdb: PDBManager, interval: float = 1.0) -> None:
             if data:
                 msg = json.dumps({"type": "pdb_data", "data": data})
                 print(f"JSON {msg}")  # send data over to pdb
-
             await asyncio.sleep(polling_intervals["websocket"])
     except Exception as e:
         logger.error(f"Sending PDB Telemetry Data ran into an error: {e}")
@@ -90,8 +94,9 @@ async def pdb_can_loop(pdb: PDBManager, interval: float = 1.0) -> None:
                 await pdb.request_board_data(board)
                 await asyncio.sleep(polling_intervals["can"])
 
-                if shutdown_event.is_set():
-                    break
+                write_boards_to_csv(pdb.boards, LOG_FILE)
+            if shutdown_event.is_set():
+                break
     except asyncio.CancelledError:
         pass
     except Exception as e:

@@ -11,6 +11,7 @@ class BoardID(IntEnum):
     BUCK1 = 0x06
     BUCK2 = 0x07
     BMS = 0x08
+    
 
 class ScienceID(IntEnum):
     DRILL = 0
@@ -72,12 +73,13 @@ class CommandID(IntEnum):
     REQUESTDP = 0x08
 
 
-class AttrMultiplier(Enum):
-    VOLTAGEMULTIPLIER = 0.003125
-    CURRENTMULTIPLIER = 0.00030517578125
-    POWERMULTIPLIER = 0.2 * CURRENTMULTIPLIER
-    TEMPMULTIPLIER = 0.125
-
+PDB_ATTRIBUTE_MULTIPLIERS = {
+    PDBStreamID.CURRENT: 0.00030517578125,
+    PDBStreamID.VOLTAGE: 0.003125,
+    PDBStreamID.POWER: 0.2 * 0.00030517578125,
+    PDBStreamID.TEMP: 0.125,
+    PDBStreamID.TOGGLE: 1,
+}
 
 @dataclass
 class ChannelMetrics:

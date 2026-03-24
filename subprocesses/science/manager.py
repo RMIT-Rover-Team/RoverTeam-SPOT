@@ -56,9 +56,8 @@ class ScienceManager:
 
     # --- PUBLIC APIS ---
     def register(self, arbitration_id: int):
-        self.can.subscribe(
-            arbitration_id, lambda data: self.handle_can_message(arbitration_id, data)
-        )
+        arb_id = self._build_arbitration_id(0, arbitration_id)
+        self.can.subscribe(arb_id, lambda data: self.handle_can_message(arb_id, data))
 
     def get_telemetry_data(self):
         return asdict(self.telemetry)
@@ -130,13 +129,13 @@ class ScienceManager:
             return
 
         _, sensor_return = self.payload_master.RequestDataPoint(
-            BoardID.SCIENCE, 2, ScienceID.HEATER_SENSOR
+            BoardID.SCIENCE, 2, channel_id
         )
-
         self.telemetry.sensors[channel_id] = sensor_return
+        
 
-    def get_drill_speed(self) -> int:
-        return self.telemetry.drill
+    # def get_drill_speed(self) -> int:
+    #     return self.telemetry.drill
 
     def get_stepper_steps(self, motor_id: int) -> int:
         return self.telemetry.stepper_motors[motor_id]
@@ -159,3 +158,7 @@ class ScienceManager:
         stream_id = data[0] & 0x0F
         channel_id = (data[1] >> 4) & 0x0F
         return dest_id, src_id, cmd_id, stream_id, channel_id
+    
+    @staticmethod
+    def _build_arbitration_id(dest_id: int, src_id: int) -> int:
+        return ((dest_id & 0x3F) << 6) | (src_id & 0x3F)
