@@ -30,8 +30,7 @@ dependencies = [
     "uvicorn (>=0.41.0,<0.42.0)",
     "sphinx (>=9.1.0,<10.0.0)",
     "pyyaml (>=6.0.3,<7.0.0)",
-    "lark-parser (>=0.12.0,<0.13.0)"
-    "python-can (>=4.6.1,<5.0.0)",
+    "lark-parser (>=0.12.0,<0.13.0)",
     "pyserial (>=3.5,<4.0)"
 ]
 

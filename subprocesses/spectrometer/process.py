@@ -79,7 +79,7 @@ async def serial_loop(port: str, baudrate: int = 115200):
                     if data:
                         # Output via standard stdout JSON telemetry format
                         print(f"JSON {json.dumps({'type': 'spectrometer', 'data': data})}")
-                        logger.info(f"Spectrometer read OK — first 5 values: {data[:5]}")
+                        # logger.info(f"Spectrometer read OK — last 5 values: {data[-5:]}")
                 except ValueError:
                     logger.debug(f"Could not parse line: {line}")
             else:

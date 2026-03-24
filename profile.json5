@@ -4,7 +4,8 @@
     "processes": [
         // "canbus",
         "telemetry", // Please don't remove this!
-        "cameras",
+        // "cameras",
+        "spectrometer",
         // "science",
         // "pdb",
         // "IMU"
