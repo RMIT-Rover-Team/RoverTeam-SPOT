@@ -6,7 +6,9 @@ import sys
 import time
 import fractions
 import av
+
 from aiortc import VideoStreamTrack
+
 
 
 # Global dictionary to hold our running broadcasters
@@ -80,7 +82,6 @@ class CameraBroadcaster:
             for frame in container.decode(stream):
                 if not self.running:
                     break
-
                 with self._lock:
                     self.latest_frame = frame
                     self.frame_id += 1
@@ -100,6 +101,12 @@ class CameraBroadcaster:
             self.running = False
             self.error = True
             self._wake_all_clients()
+    
+    def get_frame(self):
+        with self._lock:
+            if self.latest_frame is None:
+                return None
+            return self.latest_frame
 
 
 class SharedCameraTrack(VideoStreamTrack):
@@ -114,6 +121,7 @@ class SharedCameraTrack(VideoStreamTrack):
         self.broadcaster = broadcaster
         self.last_frame_id = -1
         self._start_time = None
+        self.device_id = -1
 
         # Dedicated event to prevent race conditions between multiple viewers
         self._new_frame_event = asyncio.Event()

@@ -3,6 +3,7 @@ import logging
 from dataclasses import asdict
 import dataclasses
 from typing import List, Optional, Union
+from enum import Enum
 
 from sharedlib.payloadControl import pyRover
 
@@ -121,7 +122,7 @@ class PDBManager:
                     setattr(
                         target_channel,
                         stream_name,
-                        self._convert_raw_value(channel_id, returned_value),
+                        self._convert_raw_value(attr, returned_value),
                     )
                 # update stored values
                
