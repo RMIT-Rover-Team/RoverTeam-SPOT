@@ -71,11 +71,12 @@ class CameraBroadcaster:
                 self.device,
                 format="v4l2",
                 options={
-                    "video_size": f"{self.width}x{self.height}",
+                    #"video_size": f"{self.width}x{self.height}",
                     "fflags": "nobuffer",  # Prevent ffmpeg from queuing old frames
                     "flags": "low_delay",  # Enforce low latency mode
                 },
             )
+            
             stream = container.streams.video[0]
 
             for frame in container.decode(stream):
