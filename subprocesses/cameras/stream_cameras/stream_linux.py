@@ -21,11 +21,13 @@ class CameraBroadcaster:
     Grabs frames as fast as possible to keep the hardware buffer completely empty.
     """
 
-    def __init__(self, device: str, width: int, height: int, logger: logging.Logger):
+    def __init__(self, device: str, width: int, height: int, logger: logging.Logger, useSize: bool):
         self.device = device
         self.width = width
         self.height = height
         self.logger = logger
+
+        self.useSize = useSize
 
         self.latest_frame = None
         self.frame_id = 0
@@ -67,15 +69,27 @@ class CameraBroadcaster:
             if not os.path.exists(self.device):
                 raise RuntimeError(f"{self.device} not found")
             
-            container = av.open(
-                self.device,
-                format="v4l2",
-                options={
-                    #"video_size": f"{self.width}x{self.height}",
-                    "fflags": "nobuffer",  # Prevent ffmpeg from queuing old frames
-                    "flags": "low_delay",  # Enforce low latency mode
-                },
-            )
+            if self.useSize:
+                container = av.open(
+                    self.device,
+                    format="v4l2",
+                    options={
+                        "video_size": f"{self.width}x{self.height}",
+                        "fflags": "nobuffer",  # Prevent ffmpeg from queuing old frames
+                        "flags": "low_delay",  # Enforce low latency mode
+                    },
+                )
+            else:
+                container = av.open(
+                    self.device,
+                    format="v4l2",
+                    options={
+                        #"video_size": f"{self.width}x{self.height}",
+                        "fflags": "nobuffer",  # Prevent ffmpeg from queuing old frames
+                        "flags": "low_delay",  # Enforce low latency mode
+                    },
+                )
+            
             
             stream = container.streams.video[0]
 
