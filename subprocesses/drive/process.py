@@ -48,14 +48,10 @@ def make_input_callback(name: str, commanded_inputs: dict):
         commanded_inputs[name] = value
     return callback
 
-def calc_drive(x: float, y: float):
-    drive_l = y + x
-    drive_r = y - x
+def calc_drive(l: float, r: float):
 
-    # normalize if either exceeds magnitude 1
-    max_mag = max(1.0, abs(drive_l), abs(drive_r))
-    drive_l /= max_mag
-    drive_r /= max_mag
+    drive_l = l
+    drive_r = r
 
     return drive_l, drive_r
 
@@ -79,7 +75,7 @@ async def control_loop(
         if drive_mode == 2:
             drive_multiplier = -1
 
-        drive_l, drive_r = calc_drive(commanded_inputs["drive_x"], commanded_inputs["drive_y"])
+        drive_l, drive_r = calc_drive(commanded_inputs["drive_l"], commanded_inputs["drive_r"])
 
         drive_l *= drive_multiplier
         drive_r *= drive_multiplier
@@ -149,8 +145,8 @@ async def main(
     torqueController.enable()
 
     commanded_inputs = {
-        "drive_x": 0.0,
-        "drive_y": 0.0,
+        "drive_l": 0.0,
+        "drive_r": 0.0,
         "drive_mode": 0,
         "drive_multiplier": 200
     }
@@ -180,17 +176,17 @@ async def main(
 
     schema.register_axis(
         control_socket.inputs,
-        "drive_x",
+        "drive_l",
         callback=lambda v: asyncio.create_task(
-            make_input_callback("drive_x", commanded_inputs)(v)
+            make_input_callback("drive_l", commanded_inputs)(v)
         ),
     )
 
     schema.register_axis(
         control_socket.inputs,
-        "drive_y",
+        "drive_r",
         callback=lambda v: asyncio.create_task(
-            make_input_callback("drive_y", commanded_inputs)(v)
+            make_input_callback("drive_r", commanded_inputs)(v)
         ),
     )
 
@@ -231,8 +227,8 @@ async def main(
     # REGISTER OUTPUTS
     # -------------------------
 
-    control_socket.outputs.register_output("drive_x")
-    control_socket.outputs.register_output("drive_y")
+    control_socket.outputs.register_output("drive_l")
+    control_socket.outputs.register_output("drive_r")
 
     control_socket.outputs.register_output("gyro_p")
     control_socket.outputs.register_output("gyro_y")
