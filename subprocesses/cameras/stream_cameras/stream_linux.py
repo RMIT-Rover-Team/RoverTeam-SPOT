@@ -66,13 +66,12 @@ class CameraBroadcaster:
         try:
             if not os.path.exists(self.device):
                 raise RuntimeError(f"{self.device} not found")
-
+            
             container = av.open(
                 self.device,
                 format="v4l2",
                 options={
                     "video_size": f"{self.width}x{self.height}",
-                    "pixel_format": "mjpeg",
                     "fflags": "nobuffer",  # Prevent ffmpeg from queuing old frames
                     "flags": "low_delay",  # Enforce low latency mode
                 },
