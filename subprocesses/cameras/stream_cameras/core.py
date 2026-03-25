@@ -1,50 +1,62 @@
 import sys
 
-if sys.platform.startswith("win"):
-    from .stream_windows import OpenCVCameraTrack as PlatformCameraTrack
-elif sys.platform.startswith("linux"):
-    from .stream_linux import V4L2CameraTrack as PlatformCameraTrack
-else:
-    PlatformCameraTrack = None  # Unsupported
+
+from .stream_linux import CameraBroadcaster, SharedCameraTrack
+
+# Global dictionary to hold our running broadcasters
+ACTIVE_BROADCASTERS = {}
+
 
 async def stream_camera(camera, logger, width=640, height=480):
-    """
-    Returns an instance of the platform-specific camera track.
-    'camera' is a dict with 'id' and 'label'
-    """
-    if PlatformCameraTrack is None:
-        raise RuntimeError(f"Platform {sys.platform} is not supported")
+    device_id = camera["id"]
 
-    if sys.platform.startswith("win"):
-        return PlatformCameraTrack(camera["id"], camera["label"], width, height)
-    else:
-        return PlatformCameraTrack(camera["id"], camera["label"], logger, width, height)
+    # If the broadcaster is physically dead, clear it out
+    if device_id in ACTIVE_BROADCASTERS:
+        b = ACTIVE_BROADCASTERS[device_id]
+        if not b.running or b.error:
+            logger.warning(f"Broadcaster for camera {device_id} is dead. Cleaning up.")
+            b.stop()
+            del ACTIVE_BROADCASTERS[device_id]
+
+    # Create/start it if it doesn't exist
+    if device_id not in ACTIVE_BROADCASTERS:
+        if sys.platform.startswith("linux"):
+            device_path = f"/dev/video{device_id}"
+            broadcaster = CameraBroadcaster(device_path, width, height, logger)
+        else:
+            raise RuntimeError(f"Platform {sys.platform} is not supported")
+
+        broadcaster.start()
+        ACTIVE_BROADCASTERS[device_id] = broadcaster
+
+    broadcaster = ACTIVE_BROADCASTERS[device_id]
+    broadcaster.clients += 1
+
+    track = SharedCameraTrack(broadcaster)
+    track.device_id = device_id
+    return track
+
 
 async def cleanup_camera(track, logger):
-    if track is None:
+    if not track:
         return
 
-    try:
-        # Windows OpenCV
-        if hasattr(track, "cap") and track.cap is not None:
-            track.cap.release()
-            track.cap = None
-            logger.debug(f"Released OpenCV camera {getattr(track, 'index', '?')}")
+    # Decrement clients for shared broadcast
+    if isinstance(track, SharedCameraTrack):
+        broadcaster = track.broadcaster
+        broadcaster.clients -= 1
 
-        # Linux MediaPlayer
-        if hasattr(track, "player") and track.player is not None:
-            # MediaPlayer.stop() is synchronous, but safe to await in async
-            if track.player.video:
-                track.player.video.stop()
-            if track.player.audio:
-                track.player.audio.stop()
+        # If last viewer left, physically turn off camera
+        if broadcaster.clients <= 0:
+            broadcaster.stop()
 
-            track.player = None
-            logger.debug(f"Stopped MediaPlayer camera {getattr(track, 'index', '?')}")
+            keys_to_delete = [
+                k for k, v in ACTIVE_BROADCASTERS.items() if v == broadcaster
+            ]
+            for k in keys_to_delete:
+                del ACTIVE_BROADCASTERS[k]
 
-        # Ensure VideoStreamTrack cleanup
-        if hasattr(track, "stop"):
-            track.stop()
+            logger.info(f"Released shared camera {broadcaster.device}")
 
-    except Exception as e:
-        logger.warning(f"Failed to cleanup camera track: {e}")
+    if hasattr(track, "stop"):
+        track.stop()

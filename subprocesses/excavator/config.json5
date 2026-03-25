@@ -1,0 +1,10 @@
+{
+    "name": "excavator",
+    "priority": 20,
+    "args": {
+        "--ws_host": "0.0.0.0",
+        "--ws_port": "5003",
+        "--ws_name": "excavator",
+        "--status_interval": "0.05"
+    }
+}  

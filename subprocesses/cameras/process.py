@@ -6,6 +6,7 @@ import platform
 import subprocess
 import re
 import signal
+import io
 
 from scan_cameras.core import scan
 from stream_cameras.core import stream_camera, cleanup_camera
@@ -93,6 +94,7 @@ async def handle_offer(request):
 
     try:
         track = await stream_camera(camera, logger)
+        track.device_id = camera_id
         players[pc] = track
         pc.addTrack(track)
     except Exception as e:
@@ -118,6 +120,53 @@ async def handle_offer(request):
         "type": pc.localDescription.type,
     })
 
+async def handle_capture(request):
+    try:
+        params = await request.json()
+    except Exception:
+        return web.Response(status=400, text="Invalid JSON")
+    camera_id = int(params.get("camera_id", 0))
+
+    track = next(
+        (
+            t
+            for t in players.values()
+            if hasattr(t, "device_id") and t.device_id == camera_id
+        ),
+        None,
+    )
+
+    if not track:
+        return web.Response(status=404, text="Camera is not currently streaming")
+
+    frame = track.broadcaster.get_frame()
+
+    if frame is None:
+        return web.Response(status=503, text="No frame available")
+
+    # 3. Convert frame to png
+    try:
+        # Convert PyAV frame to PIL Image
+        img = frame.to_image()
+
+        # Save to buffer
+        output = io.BytesIO()
+        img.save(output, format="png")
+        png_data = output.getvalue()
+
+        return web.Response(
+            body=png_data,
+            content_type="image/png",
+            headers={
+                "Access-Control-Allow-Origin": "*",
+                "Content-Disposition": 'inline; filename="capture.png"',
+            },
+        )
+    except Exception as e:
+        logger.error(f"Capture processing failed: {e}")
+        return web.Response(status=500, text=f"Processing error: {e}")
+    
+
 # -------------------------
 # CORS
 # -------------------------
@@ -134,12 +183,25 @@ async def cors_middleware(request, handler):
                 ),
             },
         )
+    try:
+        response = await handler(request)
+    except web.HTTPException as ex:
+        # Even for errors (404, 500), we need CORS headers or the browser hides the error
+        ex.headers["Access-Control-Allow-Origin"] = "*"
+        raise ex
 
-    response = await handler(request)
     response.headers["Access-Control-Allow-Origin"] = "*"
     response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
-    response.headers["Access-Control-Allow-Headers"] = "*"
+    response.headers["Access-Control-Allow-Headers"] = (
+        "Content-Type, Authorization, X-Requested-With"
+    )
     return response
+
+    # response = await handler(request)
+    # response.headers["Access-Control-Allow-Origin"] = "*"
+    # response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
+    # response.headers["Access-Control-Allow-Headers"] = "*"
+    # return response
 
 # -------------------------
 # CLEANUP
@@ -168,6 +230,9 @@ async def webrtc_server_task(host: str, port: int):
     app.router.add_get("/cameras", handle_cameras)
     app.router.add_post("/offer", handle_offer)
     app.router.add_get("/ping", handle_ping)
+    app.router.add_post("/capture-frame", handle_capture)
+
+    
     app.on_shutdown.append(on_shutdown)
 
     runner = web.AppRunner(app)
@@ -176,7 +241,7 @@ async def webrtc_server_task(host: str, port: int):
     site = web.TCPSite(runner, host, port)
     await site.start()
 
-    logger.warning(f"WebRTC camera server listening on {host}:{port}")
+    logger.info(f"WebRTC camera server listening on {host}:{port}")
 
     try:
         while True:
@@ -201,6 +266,7 @@ async def main(heartbeat_interval: float, sub_url: str, host: str, port: int):
     app.router.add_get("/cameras", handle_cameras)
     app.router.add_post("/offer", handle_offer)
     app.router.add_get("/ping", handle_ping)
+    app.router.add_post("/capture-frame", handle_capture)
     app.on_shutdown.append(on_shutdown)
 
     runner = web.AppRunner(app)
@@ -209,7 +275,7 @@ async def main(heartbeat_interval: float, sub_url: str, host: str, port: int):
     await site.start()
 
     logging.getLogger("aiohttp.access").setLevel(logging.WARNING)
-    logger.warning(f"WebRTC camera server listening on {host}:{port}")
+    logger.info(f"WebRTC camera server listening on {host}:{port}")
 
     # Tasks
     tasks = [

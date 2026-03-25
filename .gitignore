@@ -9,3 +9,4 @@ poetry.lock
 
 #  python cache files
 __pycache__/
+myenv/

@@ -10,7 +10,10 @@
             "[WinError 10049]",
 
             // Ignore pings, only if the status is 200 (OK)
-            "\"GET /ping HTTP/1.1\" 200"
+            "\"GET /ping HTTP/1.1\" 200",
+
+            // Forwarded from payload binary - dont send to frontend
+            "Timeout awaiting 0b"
         ]
     }
 }  

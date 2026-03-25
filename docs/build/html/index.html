@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+
+<html lang="en" data-content_root="./">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <title>RoverTeam-SPOT documentation &#8212; RoverTeam-SPOT 0.1.0 documentation</title>
+    <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=5ecbeea2" />
+    <link rel="stylesheet" type="text/css" href="_static/basic.css?v=b08954a9" />
+    <link rel="stylesheet" type="text/css" href="_static/alabaster.css?v=27fed22d" />
+    <script src="_static/documentation_options.js?v=01f34227"></script>
+    <script src="_static/doctools.js?v=fd6eb6e6"></script>
+    <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+   
+  <link rel="stylesheet" href="_static/custom.css" type="text/css" />
+  
+
+  
+  
+
+  </head><body>
+  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          
+
+          <div class="body" role="main">
+            
+  <section id="roverteam-spot-documentation">
+<h1>RoverTeam-SPOT documentation<a class="headerlink" href="#roverteam-spot-documentation" title="Link to this heading">¶</a></h1>
+<p>Add your content using <code class="docutils literal notranslate"><span class="pre">reStructuredText</span></code> syntax. See the
+<a class="reference external" href="https://www.sphinx-doc.org/en/master/usage/restructuredtext/index.html">reStructuredText</a>
+documentation for details.</p>
+<div class="toctree-wrapper compound">
+</div>
+<dl class="py class" id="module-subprocesses.pdb.process">
+<dt class="sig sig-object py" id="subprocesses.pdb.process.JsonHandler">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">subprocesses.pdb.process.</span></span><span class="sig-name descname"><span class="pre">JsonHandler</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">stream</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/subprocesses/pdb/process.html#JsonHandler"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#subprocesses.pdb.process.JsonHandler" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">StreamHandler</span></code></p>
+<dl class="py method">
+<dt class="sig sig-object py" id="subprocesses.pdb.process.JsonHandler.emit">
+<span class="sig-name descname"><span class="pre">emit</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">record</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/subprocesses/pdb/process.html#JsonHandler.emit"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#subprocesses.pdb.process.JsonHandler.emit" title="Link to this definition">¶</a></dt>
+<dd><p>Emit a record.</p>
+<p>If a formatter is specified, it is used to format the record.
+The record is then written to the stream with a trailing newline.  If
+exception information is present, it is formatted using
+traceback.print_exception and appended to the stream.  If the stream
+has an ‘encoding’ attribute, it is used to determine how to do the
+output to the stream.</p>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="subprocesses.pdb.process.estop_bms">
+<span class="property"><span class="k"><span class="pre">async</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">subprocesses.pdb.process.</span></span><span class="sig-name descname"><span class="pre">estop_bms</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/subprocesses/pdb/process.html#estop_bms"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#subprocesses.pdb.process.estop_bms" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="subprocesses.pdb.process.heartbeat_loop">
+<span class="property"><span class="k"><span class="pre">async</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">subprocesses.pdb.process.</span></span><span class="sig-name descname"><span class="pre">heartbeat_loop</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">interval</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/subprocesses/pdb/process.html#heartbeat_loop"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#subprocesses.pdb.process.heartbeat_loop" title="Link to this definition">¶</a></dt>
+<dd><dl class="simple">
+<dt>Sends a heartbeat to the main supervisor to say the subprocess is alive.</dt><dd><p>interval – interval in seconds</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="subprocesses.pdb.process.main">
+<span class="property"><span class="k"><span class="pre">async</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">subprocesses.pdb.process.</span></span><span class="sig-name descname"><span class="pre">main</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ws_host</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ws_port</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ws_name</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">status_interval</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">heartbeat_interval</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/subprocesses/pdb/process.html#main"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#subprocesses.pdb.process.main" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="subprocesses.pdb.process.pdb_request_loop">
+<span class="property"><span class="k"><span class="pre">async</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">subprocesses.pdb.process.</span></span><span class="sig-name descname"><span class="pre">pdb_request_loop</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">pdb</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#subprocesses.pdb.telemetry.manager.PDBManager" title="subprocesses.pdb.telemetry.manager.PDBManager"><span class="pre">PDBManager</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">interval</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">1.0</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="reference internal" href="_modules/subprocesses/pdb/process.html#pdb_request_loop"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#subprocesses.pdb.process.pdb_request_loop" title="Link to this definition">¶</a></dt>
+<dd><dl class="simple">
+<dt>Sends a request for PDB data from pdb manager to update it.</dt><dd><p>pdb – The PDB manager that receives, sends and stores pdb data
+interval – interval in seconds</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="subprocesses.pdb.process.pdb_telemetry_loop">
+<span class="property"><span class="k"><span class="pre">async</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">subprocesses.pdb.process.</span></span><span class="sig-name descname"><span class="pre">pdb_telemetry_loop</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">pdb</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#subprocesses.pdb.telemetry.manager.PDBManager" title="subprocesses.pdb.telemetry.manager.PDBManager"><span class="pre">PDBManager</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">interval</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">1.0</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="reference internal" href="_modules/subprocesses/pdb/process.html#pdb_telemetry_loop"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#subprocesses.pdb.process.pdb_telemetry_loop" title="Link to this definition">¶</a></dt>
+<dd><dl class="simple">
+<dt>Takes the state of PDBManager and sends it through the telemetry websocket. The topic of the pdb_telemetry_loop is pdb_data.</dt><dd><p>pdb – The PDB manager that receives, sends and stores pdb data
+interval – interval in seconds</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="subprocesses.pdb.process.ping">
+<span class="property"><span class="k"><span class="pre">async</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">subprocesses.pdb.process.</span></span><span class="sig-name descname"><span class="pre">ping</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/subprocesses/pdb/process.html#ping"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#subprocesses.pdb.process.ping" title="Link to this definition">¶</a></dt>
+<dd><p>Pings frontend</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="subprocesses.pdb.process.request_shutdown">
+<span class="sig-prename descclassname"><span class="pre">subprocesses.pdb.process.</span></span><span class="sig-name descname"><span class="pre">request_shutdown</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/subprocesses/pdb/process.html#request_shutdown"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#subprocesses.pdb.process.request_shutdown" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="subprocesses.pdb.process.toggle_buck1">
+<span class="property"><span class="k"><span class="pre">async</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">subprocesses.pdb.process.</span></span><span class="sig-name descname"><span class="pre">toggle_buck1</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">channel</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">enable</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/subprocesses/pdb/process.html#toggle_buck1"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#subprocesses.pdb.process.toggle_buck1" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="subprocesses.pdb.process.toggle_buck2">
+<span class="property"><span class="k"><span class="pre">async</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">subprocesses.pdb.process.</span></span><span class="sig-name descname"><span class="pre">toggle_buck2</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">channel</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">enable</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/subprocesses/pdb/process.html#toggle_buck2"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#subprocesses.pdb.process.toggle_buck2" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="subprocesses.pdb.process.toggle_switch">
+<span class="property"><span class="k"><span class="pre">async</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">subprocesses.pdb.process.</span></span><span class="sig-name descname"><span class="pre">toggle_switch</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">channel</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">enable</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/subprocesses/pdb/process.html#toggle_switch"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#subprocesses.pdb.process.toggle_switch" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py class" id="module-subprocesses.pdb.telemetry.manager">
+<dt class="sig sig-object py" id="subprocesses.pdb.telemetry.manager.PDBManager">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">subprocesses.pdb.telemetry.manager.</span></span><span class="sig-name descname"><span class="pre">PDBManager</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">can_client</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">CANClient</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">logger</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Logger</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/subprocesses/pdb/telemetry/manager.html#PDBManager"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#subprocesses.pdb.telemetry.manager.PDBManager" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<dl class="py method">
+<dt class="sig sig-object py" id="subprocesses.pdb.telemetry.manager.PDBManager.estop">
+<span class="property"><span class="k"><span class="pre">async</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">estop</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">board_id</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">BoardID</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/subprocesses/pdb/telemetry/manager.html#PDBManager.estop"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#subprocesses.pdb.telemetry.manager.PDBManager.estop" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="subprocesses.pdb.telemetry.manager.PDBManager.get_snapshot">
+<span class="sig-name descname"><span class="pre">get_snapshot</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/subprocesses/pdb/telemetry/manager.html#PDBManager.get_snapshot"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#subprocesses.pdb.telemetry.manager.PDBManager.get_snapshot" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="subprocesses.pdb.telemetry.manager.PDBManager.handle_can_message">
+<span class="sig-name descname"><span class="pre">handle_can_message</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">msg_id</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">data</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bytes</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/subprocesses/pdb/telemetry/manager.html#PDBManager.handle_can_message"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#subprocesses.pdb.telemetry.manager.PDBManager.handle_can_message" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="subprocesses.pdb.telemetry.manager.PDBManager.register">
+<span class="sig-name descname"><span class="pre">register</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">arbitration_id</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/subprocesses/pdb/telemetry/manager.html#PDBManager.register"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#subprocesses.pdb.telemetry.manager.PDBManager.register" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="subprocesses.pdb.telemetry.manager.PDBManager.register_all">
+<span class="sig-name descname"><span class="pre">register_all</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/subprocesses/pdb/telemetry/manager.html#PDBManager.register_all"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#subprocesses.pdb.telemetry.manager.PDBManager.register_all" title="Link to this definition">¶</a></dt>
+<dd><p>Registers a</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="subprocesses.pdb.telemetry.manager.PDBManager.request_board_data">
+<span class="property"><span class="k"><span class="pre">async</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">request_board_data</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">board_id</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">BoardID</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/subprocesses/pdb/telemetry/manager.html#PDBManager.request_board_data"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#subprocesses.pdb.telemetry.manager.PDBManager.request_board_data" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="subprocesses.pdb.telemetry.manager.PDBManager.request_channel_data">
+<span class="property"><span class="k"><span class="pre">async</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">request_channel_data</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">board_id</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">BoardID</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">channel_id</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/subprocesses/pdb/telemetry/manager.html#PDBManager.request_channel_data"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#subprocesses.pdb.telemetry.manager.PDBManager.request_channel_data" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="subprocesses.pdb.telemetry.manager.PDBManager.request_pdb_data">
+<span class="property"><span class="k"><span class="pre">async</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">request_pdb_data</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/subprocesses/pdb/telemetry/manager.html#PDBManager.request_pdb_data"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#subprocesses.pdb.telemetry.manager.PDBManager.request_pdb_data" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="subprocesses.pdb.telemetry.manager.PDBManager.toggle_channel">
+<span class="property"><span class="k"><span class="pre">async</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">toggle_channel</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">board_id</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">BoardID</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">channel</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">enable</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/subprocesses/pdb/telemetry/manager.html#PDBManager.toggle_channel"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#subprocesses.pdb.telemetry.manager.PDBManager.toggle_channel" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+</section>
+
+
+          </div>
+          
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="Main">
+        <div class="sphinxsidebarwrapper">
+<h1 class="logo"><a href="#">RoverTeam-SPOT</a></h1>
+
+
+
+
+
+
+
+
+
+<search id="searchbox" style="display: none" role="search">
+    <div class="searchformwrapper">
+    <form class="search" action="search.html" method="get">
+      <input type="text" name="q" aria-labelledby="searchlabel" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="Search"/>
+      <input type="submit" value="Go" />
+    </form>
+    </div>
+</search>
+<script>document.getElementById('searchbox').style.display = "block"</script><h3>Navigation</h3>
+
+<div class="relations">
+<h3>Related Topics</h3>
+<ul>
+  <li><a href="#">Documentation overview</a><ul>
+  </ul></li>
+</ul>
+</div>
+
+
+
+
+
+
+
+
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer">
+      &#169;2026, Aston Bolwell, Kaelan Grainger, Minh Tran, Jonathan Tran, Ritish Kandel.
+      
+      |
+      Powered by <a href="https://www.sphinx-doc.org/">Sphinx 9.1.0</a>
+      &amp; <a href="https://alabaster.readthedocs.io">Alabaster 1.0.0</a>
+      
+      |
+      <a href="_sources/index.rst.txt"
+          rel="nofollow">Page source</a>
+    </div>
+
+    
+
+    
+  </body>
+</html>

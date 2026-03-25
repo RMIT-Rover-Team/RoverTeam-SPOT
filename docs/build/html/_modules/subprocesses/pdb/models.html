@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+
+<html lang="en" data-content_root="../../../">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>subprocesses.pdb.models &#8212; RoverTeam-SPOT 0.1.0 documentation</title>
+    <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=5ecbeea2" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/basic.css?v=b08954a9" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/alabaster.css?v=27fed22d" />
+    <script src="../../../_static/documentation_options.js?v=01f34227"></script>
+    <script src="../../../_static/doctools.js?v=fd6eb6e6"></script>
+    <script src="../../../_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" />
+   
+  <link rel="stylesheet" href="../../../_static/custom.css" type="text/css" />
+  
+
+  
+  
+
+  </head><body>
+  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          
+
+          <div class="body" role="main">
+            
+  <h1>Source code for subprocesses.pdb.models</h1><div class="highlight"><pre>
+<span></span><span class="kn">from</span><span class="w"> </span><span class="nn">dataclasses</span><span class="w"> </span><span class="kn">import</span> <span class="n">asdict</span><span class="p">,</span> <span class="n">dataclass</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">enum</span><span class="w"> </span><span class="kn">import</span> <span class="n">Enum</span><span class="p">,</span> <span class="n">IntEnum</span>
+
+
+<div class="viewcode-block" id="MasterID">
+<a class="viewcode-back" href="../../../index.html#subprocesses.pdb.models.MasterID">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">MasterID</span><span class="p">(</span><span class="n">IntEnum</span><span class="p">):</span>
+    <span class="n">EQUINOX_1</span> <span class="o">=</span> <span class="mh">0x1</span>
+    <span class="n">EQUINOX_2</span> <span class="o">=</span> <span class="mh">0x2</span></div>
+
+
+
+<div class="viewcode-block" id="BoardID">
+<a class="viewcode-back" href="../../../index.html#subprocesses.pdb.models.BoardID">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">BoardID</span><span class="p">(</span><span class="n">IntEnum</span><span class="p">):</span>
+    <span class="n">SWITCH</span> <span class="o">=</span> <span class="mh">0xA</span>
+    <span class="n">BUCK1</span> <span class="o">=</span> <span class="mh">0x06</span>
+    <span class="n">BUCK2</span> <span class="o">=</span> <span class="mh">0x07</span>
+    <span class="n">BMS</span> <span class="o">=</span> <span class="mh">0x08</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">max_channels</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Returns the number of channels/cells allowed for this board.&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="n">BOARD_LIMITS</span><span class="p">[</span><span class="bp">self</span><span class="p">]</span></div>
+
+
+<div class="viewcode-block" id="ChannelLength">
+<a class="viewcode-back" href="../../../index.html#subprocesses.pdb.models.ChannelLength">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">ChannelLength</span><span class="p">(</span><span class="n">IntEnum</span><span class="p">):</span>
+    <span class="n">SWITCH</span> <span class="o">=</span> <span class="mi">8</span>
+    <span class="n">BUCK1</span> <span class="o">=</span> <span class="mi">2</span>
+    <span class="n">BUCK2</span> <span class="o">=</span> <span class="mi">2</span></div>
+
+
+
+<div class="viewcode-block" id="CellLength">
+<a class="viewcode-back" href="../../../index.html#subprocesses.pdb.models.CellLength">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">CellLength</span><span class="p">(</span><span class="n">IntEnum</span><span class="p">):</span>
+    <span class="n">BMS</span> <span class="o">=</span> <span class="mi">12</span></div>
+
+
+
+<span class="n">BOARD_LIMITS</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="n">BoardID</span><span class="o">.</span><span class="n">SWITCH</span><span class="p">:</span> <span class="n">ChannelLength</span><span class="o">.</span><span class="n">SWITCH</span><span class="p">,</span>
+    <span class="n">BoardID</span><span class="o">.</span><span class="n">BUCK1</span><span class="p">:</span> <span class="n">ChannelLength</span><span class="o">.</span><span class="n">BUCK1</span><span class="p">,</span>
+    <span class="n">BoardID</span><span class="o">.</span><span class="n">BUCK2</span><span class="p">:</span> <span class="n">ChannelLength</span><span class="o">.</span><span class="n">BUCK2</span><span class="p">,</span>
+    <span class="n">BoardID</span><span class="o">.</span><span class="n">BMS</span><span class="p">:</span> <span class="n">CellLength</span><span class="o">.</span><span class="n">BMS</span><span class="p">,</span>
+<span class="p">}</span>
+
+
+<div class="viewcode-block" id="AttrID">
+<a class="viewcode-back" href="../../../index.html#subprocesses.pdb.models.AttrID">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">AttrID</span><span class="p">(</span><span class="n">IntEnum</span><span class="p">):</span>
+    <span class="n">CURRENT</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="n">VOLTAGE</span> <span class="o">=</span> <span class="mi">1</span>
+    <span class="n">POWER</span> <span class="o">=</span> <span class="mi">2</span>
+    <span class="n">TEMP</span> <span class="o">=</span> <span class="mi">3</span></div>
+
+
+
+<div class="viewcode-block" id="CommandID">
+<a class="viewcode-back" href="../../../index.html#subprocesses.pdb.models.CommandID">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">CommandID</span><span class="p">(</span><span class="n">IntEnum</span><span class="p">):</span>
+    <span class="n">ESTOP</span> <span class="o">=</span> <span class="mh">0x00</span>
+    <span class="n">TOGGLE</span> <span class="o">=</span> <span class="mh">0x04</span>
+    <span class="n">BROADCASTDP</span> <span class="o">=</span> <span class="mh">0x07</span>
+    <span class="n">REQUESTDP</span> <span class="o">=</span> <span class="mh">0x08</span></div>
+
+
+
+<div class="viewcode-block" id="AttrMultiplier">
+<a class="viewcode-back" href="../../../index.html#subprocesses.pdb.models.AttrMultiplier">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">AttrMultiplier</span><span class="p">(</span><span class="n">Enum</span><span class="p">):</span>
+    <span class="n">VOLTAGEMULTIPLIER</span> <span class="o">=</span> <span class="mf">0.003125</span>
+    <span class="n">CURRENTMULTIPLIER</span> <span class="o">=</span> <span class="mf">0.00030517578125</span>
+    <span class="n">POWERMULTIPLIER</span> <span class="o">=</span> <span class="mf">0.2</span> <span class="o">*</span> <span class="n">CURRENTMULTIPLIER</span>
+    <span class="n">TEMPMULTIPLIER</span> <span class="o">=</span> <span class="mf">0.125</span></div>
+
+
+<div class="viewcode-block" id="ChannelMetrics">
+<a class="viewcode-back" href="../../../index.html#subprocesses.pdb.models.ChannelMetrics">[docs]</a>
+<span class="nd">@dataclass</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">ChannelMetrics</span><span class="p">:</span>
+    <span class="n">voltage</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">0.0</span>
+    <span class="n">current</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">0.0</span>
+    <span class="n">power</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">0.0</span>
+    <span class="n">temp</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">0.0</span>
+
+<div class="viewcode-block" id="ChannelMetrics.to_dict">
+<a class="viewcode-back" href="../../../index.html#subprocesses.pdb.models.ChannelMetrics.to_dict">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">to_dict</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">asdict</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span></div>
+</div>
+
+</pre></div>
+
+          </div>
+          
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="Main">
+        <div class="sphinxsidebarwrapper">
+<h1 class="logo"><a href="../../../index.html">RoverTeam-SPOT</a></h1>
+
+
+
+
+
+
+
+
+
+<search id="searchbox" style="display: none" role="search">
+    <div class="searchformwrapper">
+    <form class="search" action="../../../search.html" method="get">
+      <input type="text" name="q" aria-labelledby="searchlabel" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="Search"/>
+      <input type="submit" value="Go" />
+    </form>
+    </div>
+</search>
+<script>document.getElementById('searchbox').style.display = "block"</script><h3>Navigation</h3>
+
+<div class="relations">
+<h3>Related Topics</h3>
+<ul>
+  <li><a href="../../../index.html">Documentation overview</a><ul>
+  <li><a href="../../index.html">Module code</a><ul>
+  </ul></li>
+  </ul></li>
+</ul>
+</div>
+
+
+
+
+
+
+
+
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer">
+      &#169;2026, Aston Bolwell, Kaelan Grainger, Minh Tran, Jonathan Tran, Ritish Kandel.
+      
+      |
+      Powered by <a href="https://www.sphinx-doc.org/">Sphinx 9.1.0</a>
+      &amp; <a href="https://alabaster.readthedocs.io">Alabaster 1.0.0</a>
+      
+    </div>
+
+    
+
+    
+  </body>
+</html>

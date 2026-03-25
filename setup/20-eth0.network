@@ -1,0 +1,16 @@
+[Match]
+Name=eth0
+
+[Network]
+DHCP=yes
+Address=YOUR STATIC IP /24
+
+[DHCP]
+RouteMetric=10
+RequestBroadcast=yes
+UseDNS=yes
+UseRoutes=yes
+Timeout=5
+
+[IPv4]
+RouteMetric=100
