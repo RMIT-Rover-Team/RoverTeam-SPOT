@@ -21,11 +21,13 @@ class CameraBroadcaster:
     Grabs frames as fast as possible to keep the hardware buffer completely empty.
     """
 
-    def __init__(self, device: str, width: int, height: int, logger: logging.Logger):
+    def __init__(self, device: str, width: int, height: int, logger: logging.Logger, useSize: bool):
         self.device = device
         self.width = width
         self.height = height
         self.logger = logger
+
+        self.useSize = useSize
 
         self.latest_frame = None
         self.frame_id = 0

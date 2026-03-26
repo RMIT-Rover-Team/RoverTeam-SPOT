@@ -10,6 +10,13 @@ ACTIVE_BROADCASTERS = {}
 async def stream_camera(camera, logger, width=640, height=480):
     device_id = camera["id"]
 
+    device_label = camera["label"]
+    useSize = True
+
+    if "USB2.0 UVC PC Camera: USB2.0 UV" in device_label:
+        logger.warning("NOT USING SIZE - I THINK THIS IS MICROSCOPE!!!")
+        useSize = False
+
     # If the broadcaster is physically dead, clear it out
     if device_id in ACTIVE_BROADCASTERS:
         b = ACTIVE_BROADCASTERS[device_id]
@@ -22,7 +29,7 @@ async def stream_camera(camera, logger, width=640, height=480):
     if device_id not in ACTIVE_BROADCASTERS:
         if sys.platform.startswith("linux"):
             device_path = f"/dev/video{device_id}"
-            broadcaster = CameraBroadcaster(device_path, width, height, logger)
+            broadcaster = CameraBroadcaster(device_path, width, height, logger, useSize)
         else:
             raise RuntimeError(f"Platform {sys.platform} is not supported")
 
