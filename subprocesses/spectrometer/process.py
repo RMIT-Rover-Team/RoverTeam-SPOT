@@ -11,6 +11,12 @@ import zmq.asyncio
 # -------------------------
 # CONFIG
 # -------------------------
+# NOTES
+# MAX brightness value return from spectrometer will be
+# from green 9V laser pointed directly
+# returning 1530
+# set that as 100% so not most values get 100%
+
 class JsonHandler(logging.StreamHandler):
     def emit(self, record):
         log_obj = {"level": record.levelname, "msg": record.getMessage()}
@@ -135,7 +141,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--heartbeat", type=float, default=1.0, help="Heartbeat interval in seconds")
     parser.add_argument("--sub_url", type=str, default="tcp://127.0.0.1:5555", help="ZMQ SUB socket URL")
-    parser.add_argument("--serial_port", type=str, default="/dev/ttyACM1", help="Serial port for spectrometer Arduino")
+    parser.add_argument("--serial_port", type=str, default="/dev/ttyACM0", help="Serial port for spectrometer Arduino")
     args = parser.parse_args()
 
     asyncio.run(main(args.heartbeat, args.sub_url, args.serial_port))

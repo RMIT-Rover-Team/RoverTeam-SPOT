@@ -5,7 +5,7 @@
         // "canbus",
         "telemetry", // Please don't remove this!
         "cameras",
-        // "spectrometer",
+        "spectrometer",
         // "science",
         // "pdb",
         // "IMU"
