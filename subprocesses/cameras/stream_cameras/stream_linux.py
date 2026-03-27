@@ -10,7 +10,6 @@ import av
 from aiortc import VideoStreamTrack
 
 
-
 # Global dictionary to hold our running broadcasters
 ACTIVE_BROADCASTERS = {}
 
@@ -81,7 +80,7 @@ class CameraBroadcaster:
                     # "fflags": "nobuffer",  # Prevent ffmpeg from queuing old frames
                     # "flags": "low_delay",  # Enforce low latency mode
                     "framerate": "1", # use the lowest framerate available
-                    "input_format": "mjpeg"
+                    # "input_format": "mjpeg"
                 },
             )
             stream = container.streams.video[0]
