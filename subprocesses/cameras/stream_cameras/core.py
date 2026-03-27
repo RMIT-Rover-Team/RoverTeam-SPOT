@@ -31,6 +31,12 @@ async def stream_camera(camera, logger, width=640, height=480):
 
     broadcaster = ACTIVE_BROADCASTERS[device_id]
     broadcaster.clients += 1
+    logger.warning(
+        "BROADCASTER_CLIENTS_ADD device_id=%s clients=%s active_broadcasters=%s",
+        device_id,
+        broadcaster.clients,
+        len(ACTIVE_BROADCASTERS),
+    )
 
     return SharedCameraTrack(broadcaster)
 
@@ -43,6 +49,12 @@ async def cleanup_camera(track, logger):
     if isinstance(track, SharedCameraTrack):
         broadcaster = track.broadcaster
         broadcaster.clients -= 1
+        logger.warning(
+            "BROADCASTER_CLIENTS_SUB device=%s clients=%s active_broadcasters=%s",
+            broadcaster.device,
+            broadcaster.clients,
+            len(ACTIVE_BROADCASTERS),
+        )
 
         # If last viewer left, physically turn off camera
         if broadcaster.clients <= 0:

@@ -46,6 +46,12 @@ pcs = set()
 players = {}
 ignore_list = []
 
+# Peer lifecycle debug
+peer_seq = 0
+peer_created = 0
+peer_cleaned = 0
+peer_meta = {}
+
 # -------------------------
 # ZMQ RECEIVE LOOP
 # -------------------------
@@ -78,6 +84,8 @@ async def handle_ping(request):
     return web.Response(text="cameras")
 
 async def handle_offer(request):
+    global peer_seq, peer_created
+
     params = await request.json()
     camera_id = int(params.get("camera_id", 0))
 
@@ -86,10 +94,25 @@ async def handle_offer(request):
     if camera is None:
         return web.Response(status=404, text="Camera not found")
 
-    logger.info(f"Opening camera: {camera["label"]}")
+    logger.info(f"Opening camera: {camera['label']}")
 
     pc = RTCPeerConnection()
     pcs.add(pc)
+
+    peer_seq += 1
+    peer_created += 1
+    peer_id = peer_seq
+    peer_meta[pc] = {"id": peer_id, "camera_id": camera_id}
+
+    logger.warning(
+        "PEER_CREATE id=%s camera_id=%s pcs=%s players=%s created=%s cleaned=%s",
+        peer_id,
+        camera_id,
+        len(pcs),
+        len(players),
+        peer_created,
+        peer_cleaned,
+    )
 
     try:
         track = await stream_camera(camera, logger)
@@ -101,6 +124,14 @@ async def handle_offer(request):
 
     @pc.on("connectionstatechange")
     async def on_state():
+        meta = peer_meta.get(pc, {})
+        logger.warning(
+            "PEER_STATE id=%s state=%s pcs=%s players=%s",
+            meta.get("id"),
+            pc.connectionState,
+            len(pcs),
+            len(players),
+        )
         if pc.connectionState in ("failed", "closed"):
             await cleanup_pc(pc)
 
@@ -145,6 +176,16 @@ async def cors_middleware(request, handler):
 # CLEANUP
 # -------------------------
 async def cleanup_pc(pc):
+    global peer_cleaned
+
+    meta = peer_meta.get(pc, {})
+    logger.warning(
+        "PEER_CLEANUP_BEGIN id=%s pcs=%s players=%s",
+        meta.get("id"),
+        len(pcs),
+        len(players),
+    )
+
     track = players.pop(pc, None)
     if track:
         try:
@@ -154,6 +195,18 @@ async def cleanup_pc(pc):
 
     await pc.close()
     pcs.discard(pc)
+
+    peer_cleaned += 1
+    peer_meta.pop(pc, None)
+    logger.warning(
+        "PEER_CLEANUP_END id=%s pcs=%s players=%s created=%s cleaned=%s delta=%s",
+        meta.get("id"),
+        len(pcs),
+        len(players),
+        peer_created,
+        peer_cleaned,
+        (peer_created - peer_cleaned),
+    )
 
 
 async def on_shutdown(app):
