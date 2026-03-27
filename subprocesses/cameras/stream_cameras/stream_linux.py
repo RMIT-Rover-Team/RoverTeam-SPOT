@@ -26,7 +26,6 @@ class CameraBroadcaster:
         self.width = width
         self.height = height
         self.logger = logger
-
         self.useSize = useSize
 
         self.latest_frame = None
@@ -40,12 +39,18 @@ class CameraBroadcaster:
         self._lock = threading.Lock()
         self._thread = None
         self._loop = asyncio.get_event_loop()
+        self._start_time = time.monotonic()
+        self._last_pts = -1
 
     def start(self):
         if self.running:
             return
         self.running = True
         self.error = False
+        
+        self._start_time = time.monotonic()
+        self._last_pts = -1
+
         self._thread = threading.Thread(target=self._capture_loop, daemon=True)
         self._thread.start()
         self.logger.info(f"[{self.device}] Broadcaster thread started.")
@@ -53,8 +58,6 @@ class CameraBroadcaster:
     def stop(self):
         self.running = False
         self._wake_all_clients()
-        if self._thread and self._thread.is_alive():
-            self._thread.join(timeout=2)
         self.logger.info(f"[{self.device}] Broadcaster thread stopped.")
 
     def _wake_all_clients(self):
@@ -73,9 +76,9 @@ class CameraBroadcaster:
                 self.device,
                 format="v4l2",
                 options={
-                    "video_size": f"{self.width}x{self.height}",
-                    "fflags": "nobuffer",  # Prevent ffmpeg from queuing old frames
-                    "flags": "low_delay",  # Enforce low latency mode
+                    # "video_size": f"{self.width}x{self.height}",
+                    # "fflags": "nobuffer",  # Prevent ffmpeg from queuing old frames
+                    # "flags": "low_delay",  # Enforce low latency mode
                 },
             )
             stream = container.streams.video[0]
@@ -83,6 +86,15 @@ class CameraBroadcaster:
             for frame in container.decode(stream):
                 if not self.running:
                     break
+
+                yuv_frame = frame.reformat(format="yuv420p")
+                timestamp = int((time.monotonic() - self._start_time) * 90000)
+                if timestamp <= self._last_pts:
+                    timestamp = self._last_pts + 1
+                self._last_pts = timestamp
+                yuv_frame.pts = timestamp
+                yuv_frame.time_base = fractions.Fraction(1, 90000)
+
                 with self._lock:
                     self.latest_frame = frame
                     self.frame_id += 1
@@ -135,35 +147,26 @@ class SharedCameraTrack(VideoStreamTrack):
             self.broadcaster.client_events.discard(self._new_frame_event)
 
     async def recv(self) -> av.VideoFrame:
-        # If we already processed the latest frame, wait for the next one.
-        # If we are behind (dropped frames), skip the wait to catch up instantly.
-        if self.last_frame_id == self.broadcaster.frame_id:
+        while (
+            self.broadcaster.latest_frame is None
+            or self.last_frame_id == self.broadcaster.frame_id
+        ):
             self._new_frame_event.clear()
+
+            # Re-check to ensure we didn't clear the event right as the thread pushed a frame
+            if (
+                self.broadcaster.latest_frame is not None
+                and self.last_frame_id != self.broadcaster.frame_id
+            ):
+                break
+
+            if not self.broadcaster.running or self.broadcaster.error:
+                raise ConnectionError("Camera stream failed or was unplugged")
+
             await self._new_frame_event.wait()
 
         with self.broadcaster._lock:
-            if not self.broadcaster.running or self.broadcaster.error:
-                raise ConnectionError("Camera stream failed or was unplugged")
             frame = self.broadcaster.latest_frame
             self.last_frame_id = self.broadcaster.frame_id
 
-        if frame is None:
-            raise ConnectionError("No frame available from broadcaster")
-
-        # Convert to WebRTC's native format
-        new_frame = frame.reformat(format="yuv420p")
-
-        # THE FIX: Generate True Real-Time Timestamps.
-        # This completely overrides aiortc's pacing and forces the WebRTC
-        # browser player to display the frame exactly as it was captured,
-        # eliminating all snapping and lagging.
-        if self._start_time is None:
-            self._start_time = time.monotonic()
-
-        # WebRTC uses a 90kHz clock for video timestamps
-        timestamp = int((time.monotonic() - self._start_time) * 90000)
-
-        new_frame.pts = timestamp
-        new_frame.time_base = fractions.Fraction(1, 90000)
-
-        return new_frame
+        return frame

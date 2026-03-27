@@ -30,6 +30,8 @@ async def stream_camera(camera, logger, width=640, height=480):
         if sys.platform.startswith("linux"):
             device_path = f"/dev/video{device_id}"
             broadcaster = CameraBroadcaster(device_path, width, height, logger, useSize)
+            logger.info("created camera instance")
+            logger.info(len(ACTIVE_BROADCASTERS))
         else:
             raise RuntimeError(f"Platform {sys.platform} is not supported")
 
@@ -62,7 +64,8 @@ async def cleanup_camera(track, logger):
             ]
             for k in keys_to_delete:
                 del ACTIVE_BROADCASTERS[k]
-
+                logger.info("Destroying broadcaster")
+                logger.info(len(ACTIVE_BROADCASTERS))
             logger.info(f"Released shared camera {broadcaster.device}")
 
     if hasattr(track, "stop"):
