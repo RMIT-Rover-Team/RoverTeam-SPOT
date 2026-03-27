@@ -21,12 +21,13 @@ class CameraBroadcaster:
     Grabs frames as fast as possible to keep the hardware buffer completely empty.
     """
 
-    def __init__(self, device: str, width: int, height: int, logger: logging.Logger, useSize: bool):
+    def __init__(self, device: str, width: int, height: int, logger: logging.Logger, useSize: bool, fps: int = 15):
         self.device = device
         self.width = width
         self.height = height
         self.logger = logger
         self.useSize = useSize
+        self.fps = fps
 
         self.latest_frame = None
         self.frame_id = 0
@@ -76,9 +77,10 @@ class CameraBroadcaster:
                 self.device,
                 format="v4l2",
                 options={
-                    # "video_size": f"{self.width}x{self.height}",
+                    "video_size": f"{self.width}x{self.height}",
                     # "fflags": "nobuffer",  # Prevent ffmpeg from queuing old frames
                     # "flags": "low_delay",  # Enforce low latency mode
+                    "framerate": "1" # use the lowest framerate available
                 },
             )
             stream = container.streams.video[0]

@@ -17,6 +17,7 @@ import zmq.asyncio
 from aiohttp import web
 from aiortc import RTCPeerConnection, RTCSessionDescription, VideoStreamTrack
 from av import VideoFrame
+from aiortc.rtcrtpsender import RTCRtpSender
 
 
 # -------------------------
@@ -96,7 +97,16 @@ async def handle_offer(request):
         track = await stream_camera(camera, logger)
         track.device_id = camera_id
         players[pc] = track
-        pc.addTrack(track)
+        transceiver = pc.addTransceiver(track)
+
+        capabilities = RTCRtpSender.getCapabilities("video")
+        h264_preferences = [
+            codec for codec in capabilities.codecs if codec.name == "H264"
+        ]
+
+        if h264_preferences:
+            transceiver.setCodecPreferences(h264_preferences)
+
     except Exception as e:
         logger.error(f"Failed to open camera: {e}")
         return web.Response(status=500, text=str(e))
