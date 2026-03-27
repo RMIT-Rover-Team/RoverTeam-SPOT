@@ -80,7 +80,7 @@ class CameraBroadcaster:
                     # "fflags": "nobuffer",  # Prevent ffmpeg from queuing old frames
                     # "flags": "low_delay",  # Enforce low latency mode
                     "framerate": "1", # use the lowest framerate available
-                    # "input_format": "mjpeg"
+                    "input_format": "mjpeg"
                 },
             )
             stream = container.streams.video[0]
