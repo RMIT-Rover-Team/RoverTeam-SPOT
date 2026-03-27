@@ -177,6 +177,34 @@ async def handle_capture(request):
         return web.Response(status=500, text=f"Processing error: {e}")
     
 
+async def handle_terminate(request):
+    try:
+        params = await request.json()
+    except Exception:
+        return web.Response(status=400, text="Invalid JSON")
+    
+    camera_id = int(params.get("camera_id", 0))
+    track = next(
+        (
+            t
+            for t in players.values()
+            if hasattr(t, "device_id") and t.device_id == camera_id
+        ),
+        None,
+    )
+
+    if not track:
+        return web.Response(status=404, text="Camera is not currently streaming")
+
+    if track:
+        try:
+            await cleanup_camera(track, logger)
+        except Exception as e:
+            logger.warning(f"Failed to cleanup camera track: {e}")
+
+    return web.Response(text="cameras")
+
+
 # -------------------------
 # CORS
 # -------------------------
@@ -241,7 +269,7 @@ async def webrtc_server_task(host: str, port: int):
     app.router.add_post("/offer", handle_offer)
     app.router.add_get("/ping", handle_ping)
     app.router.add_post("/capture-frame", handle_capture)
-
+    app.router.add_post("/terminate", handle_terminate)
     
     app.on_shutdown.append(on_shutdown)
 
@@ -277,6 +305,7 @@ async def main(heartbeat_interval: float, sub_url: str, host: str, port: int):
     app.router.add_post("/offer", handle_offer)
     app.router.add_get("/ping", handle_ping)
     app.router.add_post("/capture-frame", handle_capture)
+    app.router.add_post("/terminate", handle_terminate)
     app.on_shutdown.append(on_shutdown)
 
     runner = web.AppRunner(app)
