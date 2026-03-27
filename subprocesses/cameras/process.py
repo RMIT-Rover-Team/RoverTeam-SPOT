@@ -97,15 +97,7 @@ async def handle_offer(request):
         track = await stream_camera(camera, logger)
         track.device_id = camera_id
         players[pc] = track
-        transceiver = pc.addTransceiver(track)
-
-        capabilities = RTCRtpSender.getCapabilities("video")
-        h264_preferences = [
-            codec for codec in capabilities.codecs if codec.name == "H264"
-        ]
-
-        if h264_preferences:
-            transceiver.setCodecPreferences(h264_preferences)
+        pc.addTransceiver(track)
 
     except Exception as e:
         logger.error(f"Failed to open camera: {e}")
