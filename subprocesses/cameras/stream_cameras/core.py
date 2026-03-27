@@ -1,6 +1,5 @@
 import sys
 
-
 from .stream_linux import CameraBroadcaster, SharedCameraTrack
 
 # Global dictionary to hold our running broadcasters

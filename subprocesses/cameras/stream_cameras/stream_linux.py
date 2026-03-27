@@ -10,7 +10,6 @@ import av
 from aiortc import VideoStreamTrack
 
 
-
 # Global dictionary to hold our running broadcasters
 ACTIVE_BROADCASTERS = {}
 
@@ -80,7 +79,8 @@ class CameraBroadcaster:
                     "video_size": f"{self.width}x{self.height}",
                     # "fflags": "nobuffer",  # Prevent ffmpeg from queuing old frames
                     # "flags": "low_delay",  # Enforce low latency mode
-                    "framerate": "1" # use the lowest framerate available
+                    "framerate": "1", # use the lowest framerate available
+                    "input_format": "mjpeg"
                 },
             )
             stream = container.streams.video[0]
@@ -89,13 +89,13 @@ class CameraBroadcaster:
                 if not self.running:
                     break
 
-                yuv_frame = frame.reformat(format="yuv420p")
-                timestamp = int((time.monotonic() - self._start_time) * 90000)
-                if timestamp <= self._last_pts:
-                    timestamp = self._last_pts + 1
-                self._last_pts = timestamp
-                yuv_frame.pts = timestamp
-                yuv_frame.time_base = fractions.Fraction(1, 90000)
+                # yuv_frame = frame.reformat(format="yuv420p")
+                # timestamp = int((time.monotonic() - self._start_time) * 90000)
+                # if timestamp <= self._last_pts:
+                #     timestamp = self._last_pts + 1
+                # self._last_pts = timestamp
+                # yuv_frame.pts = timestamp
+                # yuv_frame.time_base = fractions.Fraction(1, 90000)
 
                 with self._lock:
                     self.latest_frame = frame
